@@ -11,7 +11,7 @@
 
 #include <ogcsys.h>
 
-#define MAX_PICTURE_SIZE (1280*720*6) // ~5.5MB - 1024*1024*6 = 6MB
+#define MAX_PICTURE_SIZE (1024*1024*6) // 1024*1024*6 = 6MB
 
 void WiiMenu();
 void MPlayerMenu();
