@@ -52,7 +52,7 @@ static int sap_read_close(AVFormatContext *s)
 {
     struct SAPState *sap = s->priv_data;
     if (sap->sdp_ctx)
-        avformat_close_input(&sap->sdp_ctx);
+        av_close_input_file(sap->sdp_ctx);
     if (sap->ann_fd)
         ffurl_close(sap->ann_fd);
     av_freep(&sap->sdp);
@@ -60,7 +60,8 @@ static int sap_read_close(AVFormatContext *s)
     return 0;
 }
 
-static int sap_read_header(AVFormatContext *s)
+static int sap_read_header(AVFormatContext *s,
+                           AVFormatParameters *ap)
 {
     struct SAPState *sap = s->priv_data;
     char host[1024], path[1024], url[1024];
@@ -234,5 +235,6 @@ AVInputFormat ff_sap_demuxer = {
     .read_header    = sap_read_header,
     .read_packet    = sap_fetch_packet,
     .read_close     = sap_read_close,
-    .flags          = AVFMT_NOFILE,
+    .flags = AVFMT_NOFILE,
 };
+

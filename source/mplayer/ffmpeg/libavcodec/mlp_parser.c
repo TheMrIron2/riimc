@@ -84,7 +84,7 @@ static const uint64_t thd_layout[13] = {
     AV_CH_BACK_CENTER,                                      // Cs
     AV_CH_TOP_CENTER,                                       // Ts
     AV_CH_SIDE_LEFT|AV_CH_SIDE_RIGHT,                       // LRsd - TODO: Surround Direct
-    AV_CH_WIDE_LEFT|AV_CH_WIDE_RIGHT,                       // LRw
+    AV_CH_FRONT_LEFT_OF_CENTER|AV_CH_FRONT_RIGHT_OF_CENTER, // LRw  - TODO: Wide
     AV_CH_TOP_FRONT_CENTER,                                 // Cvh
     AV_CH_LOW_FREQUENCY                                     // LFE2
 };
@@ -109,8 +109,7 @@ static int truehd_channels(int chanmap)
 
 uint64_t ff_truehd_layout(int chanmap)
 {
-    int i;
-    uint64_t layout = 0;
+    int layout = 0, i;
 
     for (i = 0; i < 13; i++)
         layout |= thd_layout[i] * ((chanmap >> i) & 1);
@@ -315,7 +314,7 @@ static int mlp_parse(AVCodecParserContext *s,
         else
             avctx->sample_fmt = AV_SAMPLE_FMT_S16;
         avctx->sample_rate = mh.group1_samplerate;
-        s->duration = mh.access_unit_size;
+        avctx->frame_size = mh.access_unit_size;
 
         if (mh.stream_type == 0xbb) {
             /* MLP stream */

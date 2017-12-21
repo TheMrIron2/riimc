@@ -31,7 +31,8 @@ static int dfa_probe(AVProbeData *p)
     return AVPROBE_SCORE_MAX;
 }
 
-static int dfa_read_header(AVFormatContext *s)
+static int dfa_read_header(AVFormatContext *s,
+                           AVFormatParameters *ap)
 {
     AVIOContext *pb = s->pb;
     AVStream *st;
@@ -114,5 +115,5 @@ AVInputFormat ff_dfa_demuxer = {
     .read_probe     = dfa_probe,
     .read_header    = dfa_read_header,
     .read_packet    = dfa_read_packet,
-    .flags          = AVFMT_GENERIC_INDEX,
+    .flags = AVFMT_GENERIC_INDEX,
 };

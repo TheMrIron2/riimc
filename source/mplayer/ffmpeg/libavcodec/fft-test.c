@@ -23,7 +23,6 @@
  * FFT and MDCT tests.
  */
 
-#include "libavutil/cpu.h"
 #include "libavutil/mathematics.h"
 #include "libavutil/lfg.h"
 #include "libavutil/log.h"
@@ -146,7 +145,7 @@ static void mdct_ref(FFTSample *output, FFTSample *input, int nbits)
 }
 
 #if CONFIG_FFT_FLOAT
-static void idct_ref(FFTSample *output, FFTSample *input, int nbits)
+static void idct_ref(float *output, float *input, int nbits)
 {
     int n = 1<<nbits;
     int k, i;
@@ -162,7 +161,7 @@ static void idct_ref(FFTSample *output, FFTSample *input, int nbits)
         output[i] = 2 * s / n;
     }
 }
-static void dct_ref(FFTSample *output, FFTSample *input, int nbits)
+static void dct_ref(float *output, float *input, int nbits)
 {
     int n = 1<<nbits;
     int k, i;
@@ -241,7 +240,6 @@ int main(int argc, char **argv)
     FFTComplex *tab, *tab1, *tab_ref;
     FFTSample *tab2;
     int it, i, c;
-    int cpuflags;
     int do_speed = 0;
     int err = 1;
     enum tf_transform transform = TRANSFORM_FFT;
@@ -260,7 +258,7 @@ int main(int argc, char **argv)
 
     fft_nbits = 9;
     for(;;) {
-        c = getopt(argc, argv, "hsimrdn:f:c:");
+        c = getopt(argc, argv, "hsimrdn:f:");
         if (c == -1)
             break;
         switch(c) {
@@ -287,12 +285,6 @@ int main(int argc, char **argv)
             break;
         case 'f':
             scale = atof(optarg);
-            break;
-        case 'c':
-            cpuflags = av_parse_cpu_flags(optarg);
-            if (cpuflags < 0)
-                return 1;
-            av_set_cpu_flags_mask(cpuflags);
             break;
         }
     }
@@ -409,11 +401,11 @@ int main(int argc, char **argv)
         break;
     case TRANSFORM_DCT:
         memcpy(tab, tab1, fft_size * sizeof(FFTComplex));
-        d->dct_calc(d, (FFTSample *)tab);
+        d->dct_calc(d, tab);
         if (do_inverse) {
-            idct_ref((FFTSample*)tab_ref, (FFTSample *)tab1, fft_nbits);
+            idct_ref(tab_ref, tab1, fft_nbits);
         } else {
-            dct_ref((FFTSample*)tab_ref, (FFTSample *)tab1, fft_nbits);
+            dct_ref(tab_ref, tab1, fft_nbits);
         }
         err = check_diff((float *)tab_ref, (float *)tab, fft_size, 1.0);
         break;

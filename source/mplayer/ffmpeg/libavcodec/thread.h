@@ -31,15 +31,15 @@
 #include "avcodec.h"
 
 /**
- * Wait for decoding threads to finish and reset internal state.
- * Called by avcodec_flush_buffers().
+ * Waits for decoding threads to finish and resets internal
+ * state. Called by avcodec_flush_buffers().
  *
  * @param avctx The context.
  */
 void ff_thread_flush(AVCodecContext *avctx);
 
 /**
- * Submit a new frame to a decoding thread.
+ * Submits a new frame to a decoding thread.
  * Returns the next available frame in picture. *got_picture_ptr
  * will be 0 if none is available.
  * The return value on success is the size of the consumed packet for
@@ -62,7 +62,8 @@ int ff_thread_decode_frame(AVCodecContext *avctx, AVFrame *picture,
 void ff_thread_finish_setup(AVCodecContext *avctx);
 
 /**
- * Notify later decoding threads when part of their reference picture is ready.
+ * Notifies later decoding threads when part of their reference picture
+ * is ready.
  * Call this when some part of the picture is finished decoding.
  * Later calls with lower values of progress have no effect.
  *
@@ -74,7 +75,7 @@ void ff_thread_finish_setup(AVCodecContext *avctx);
 void ff_thread_report_progress(AVFrame *f, int progress, int field);
 
 /**
- * Wait for earlier decoding threads to finish reference pictures.
+ * Waits for earlier decoding threads to finish reference pictures
  * Call this before accessing some part of a picture, with a given
  * value for progress, and it will return after the responsible decoding
  * thread calls ff_thread_report_progress() with the same or

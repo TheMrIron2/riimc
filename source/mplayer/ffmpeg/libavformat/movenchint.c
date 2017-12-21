@@ -24,7 +24,6 @@
 #include "internal.h"
 #include "rtpenc_chain.h"
 #include "avio_internal.h"
-#include "rtp.h"
 
 int ff_mov_init_hinting(AVFormatContext *s, int index, int src_index)
 {
@@ -43,9 +42,9 @@ int ff_mov_init_hinting(AVFormatContext *s, int index, int src_index)
     track->enc->codec_type = AVMEDIA_TYPE_DATA;
     track->enc->codec_tag  = track->tag;
 
-    ret = ff_rtp_chain_mux_open(&track->rtp_ctx, s, src_st, NULL,
-                                RTP_MAX_PACKET_SIZE);
-    if (ret < 0)
+    track->rtp_ctx = ff_rtp_chain_mux_open(s, src_st, NULL,
+                                           RTP_MAX_PACKET_SIZE);
+    if (!track->rtp_ctx)
         goto fail;
 
     /* Copy the RTP AVStream timebase back to the hint AVStream */
@@ -96,12 +95,11 @@ static void sample_queue_free(HintSampleQueue *queue)
  * not copied. sample_queue_retain should be called before pkt->data
  * is reused/freed.
  */
-static void sample_queue_push(HintSampleQueue *queue, uint8_t *data, int size,
-                              int sample)
+static void sample_queue_push(HintSampleQueue *queue, AVPacket *pkt, int sample)
 {
     /* No need to keep track of smaller samples, since describing them
      * with immediates is more efficient. */
-    if (size <= 14)
+    if (pkt->size <= 14)
         return;
     if (!queue->samples || queue->len >= queue->size) {
         HintSample* samples;
@@ -111,8 +109,8 @@ static void sample_queue_push(HintSampleQueue *queue, uint8_t *data, int size,
             return;
         queue->samples = samples;
     }
-    queue->samples[queue->len].data = data;
-    queue->samples[queue->len].size = size;
+    queue->samples[queue->len].data = pkt->data;
+    queue->samples[queue->len].size = pkt->size;
     queue->samples[queue->len].sample_number = sample;
     queue->samples[queue->len].offset = 0;
     queue->samples[queue->len].own_data = 0;
@@ -333,7 +331,7 @@ static int write_hint_packets(AVIOContext *out, const uint8_t *data,
         size -= 4;
         if (packet_len > size || packet_len <= 12)
             break;
-        if (RTP_PT_IS_RTCP(data[1])) {
+        if (data[1] >= 200 && data[1] <= 204) {
             /* RTCP packet, just skip */
             data += packet_len;
             size -= packet_len;
@@ -388,8 +386,7 @@ static int write_hint_packets(AVIOContext *out, const uint8_t *data,
 }
 
 int ff_mov_add_hinted_packet(AVFormatContext *s, AVPacket *pkt,
-                             int track_index, int sample,
-                             uint8_t *sample_data, int sample_size)
+                             int track_index, int sample)
 {
     MOVMuxContext *mov = s->priv_data;
     MOVTrack *trk = &mov->tracks[track_index];
@@ -405,10 +402,7 @@ int ff_mov_add_hinted_packet(AVFormatContext *s, AVPacket *pkt,
     if (!rtp_ctx->pb)
         return AVERROR(ENOMEM);
 
-    if (sample_data)
-        sample_queue_push(&trk->sample_queue, sample_data, sample_size, sample);
-    else
-        sample_queue_push(&trk->sample_queue, pkt->data, pkt->size, sample);
+    sample_queue_push(&trk->sample_queue, pkt, sample);
 
     /* Feed the packet to the RTP muxer */
     ff_write_chained(rtp_ctx, 0, pkt, s);
@@ -460,3 +454,4 @@ void ff_mov_close_hinting(MOVTrack *track) {
     }
     avformat_free_context(rtp_ctx);
 }
+

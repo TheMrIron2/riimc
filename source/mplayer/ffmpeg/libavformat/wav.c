@@ -224,9 +224,8 @@ AVOutputFormat ff_wav_muxer = {
     .write_header      = wav_write_header,
     .write_packet      = wav_write_packet,
     .write_trailer     = wav_write_trailer,
-    .flags             = AVFMT_TS_NONSTRICT,
-    .codec_tag         = (const AVCodecTag* const []){ ff_codec_wav_tags, 0 },
-    .priv_class        = &wav_muxer_class,
+    .codec_tag= (const AVCodecTag* const []){ff_codec_wav_tags, 0},
+    .priv_class = &wav_muxer_class,
 };
 #endif /* CONFIG_WAV_MUXER */
 
@@ -388,7 +387,8 @@ static const AVMetadataConv wav_metadata_conv[] = {
 };
 
 /* wav input */
-static int wav_read_header(AVFormatContext *s)
+static int wav_read_header(AVFormatContext *s,
+                           AVFormatParameters *ap)
 {
     int64_t size, av_uninit(data_size);
     int64_t sample_count=0;
@@ -508,13 +508,12 @@ static int wav_read_header(AVFormatContext *s)
         case MKTAG('L', 'I', 'S', 'T'):
             list_type = avio_rl32(pb);
             if (size < 4) {
-                av_log(s, AV_LOG_ERROR, "too short LIST tag\n");
+                av_log(s, AV_LOG_ERROR, "too short LIST");
                 return AVERROR_INVALIDDATA;
             }
             switch (list_type) {
             case MKTAG('I', 'N', 'F', 'O'):
-                if ((ret = ff_read_riff_info(s, size - 4)) < 0)
-                    return ret;
+                ff_read_riff_info(s, size - 4);
             }
             break;
         }
@@ -677,7 +676,7 @@ static int wav_read_seek(AVFormatContext *s,
     default:
         break;
     }
-    return ff_pcm_read_seek(s, stream_index, timestamp, flags);
+    return pcm_read_seek(s, stream_index, timestamp, flags);
 }
 
 #define OFFSET(x) offsetof(WAVContext, x)
@@ -701,8 +700,8 @@ AVInputFormat ff_wav_demuxer = {
     .read_header    = wav_read_header,
     .read_packet    = wav_read_packet,
     .read_seek      = wav_read_seek,
-    .flags          = AVFMT_GENERIC_INDEX,
-    .codec_tag      = (const AVCodecTag* const []){ ff_codec_wav_tags, 0 },
+    .flags= AVFMT_GENERIC_INDEX,
+    .codec_tag= (const AVCodecTag* const []){ff_codec_wav_tags, 0},
     .priv_class     = &wav_demuxer_class,
 };
 #endif /* CONFIG_WAV_DEMUXER */
@@ -729,7 +728,7 @@ static int w64_probe(AVProbeData *p)
         return 0;
 }
 
-static int w64_read_header(AVFormatContext *s)
+static int w64_read_header(AVFormatContext *s, AVFormatParameters *ap)
 {
     int64_t size;
     AVIOContext *pb  = s->pb;
@@ -790,7 +789,7 @@ AVInputFormat ff_w64_demuxer = {
     .read_header    = w64_read_header,
     .read_packet    = wav_read_packet,
     .read_seek      = wav_read_seek,
-    .flags          = AVFMT_GENERIC_INDEX,
-    .codec_tag      = (const AVCodecTag* const []){ ff_codec_wav_tags, 0 },
+    .flags = AVFMT_GENERIC_INDEX,
+    .codec_tag = (const AVCodecTag* const []){ff_codec_wav_tags, 0},
 };
 #endif /* CONFIG_W64_DEMUXER */

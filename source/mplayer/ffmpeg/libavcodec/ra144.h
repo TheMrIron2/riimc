@@ -24,7 +24,6 @@
 
 #include <stdint.h>
 #include "lpc.h"
-#include "audio_frame_queue.h"
 
 #define NBLOCKS         4       ///< number of subblocks within a block
 #define BLOCKSIZE       40      ///< subblock size in 16-bit words
@@ -37,8 +36,6 @@ typedef struct {
     AVCodecContext *avctx;
     AVFrame frame;
     LPCContext lpc_ctx;
-    AudioFrameQueue afq;
-    int last_frame;
 
     unsigned int     old_energy;        ///< previous frame energy
 

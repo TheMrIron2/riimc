@@ -28,9 +28,6 @@
 #define CABAC 1
 #define UNCHECKED_BITSTREAM_READER 1
 
-#include "config.h"
-#include "cabac.h"
-#include "cabac_functions.h"
 #include "internal.h"
 #include "dsputil.h"
 #include "avcodec.h"
@@ -39,6 +36,7 @@
 #include "h264_mvpred.h"
 #include "golomb.h"
 
+#include "cabac.h"
 #if ARCH_X86
 #include "x86/h264_i386.h"
 #endif
@@ -1561,6 +1559,13 @@ static av_always_inline int get_cabac_cbf_ctx( H264Context *h, int cat, int idx,
     return base_ctx[cat] + ctx;
 }
 
+DECLARE_ASM_CONST(1, uint8_t, last_coeff_flag_offset_8x8)[63] = {
+    0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+    3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4,
+    5, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8
+};
+
 static av_always_inline void
 decode_cabac_residual_internal(H264Context *h, DCTELEM *block,
                                int cat, int n, const uint8_t *scantable,
@@ -1652,7 +1657,7 @@ decode_cabac_residual_internal(H264Context *h, DCTELEM *block,
             index[coeff_count++] = last;\
         }
         const uint8_t *sig_off = significant_coeff_flag_offset_8x8[MB_FIELD];
-#if ARCH_X86 && HAVE_7REGS
+#if ARCH_X86 && HAVE_7REGS && HAVE_EBX_AVAILABLE && !defined(BROKEN_RELOCATIONS)
         coeff_count= decode_significance_8x8_x86(CC, significant_coeff_ctx_base, index,
                                                  last_coeff_ctx_base, sig_off);
     } else {
@@ -1663,7 +1668,7 @@ decode_cabac_residual_internal(H264Context *h, DCTELEM *block,
                                                  last_coeff_ctx_base-significant_coeff_ctx_base);
         }
 #else
-        DECODE_SIGNIFICANCE( 63, sig_off[last], ff_h264_last_coeff_flag_offset_8x8[last] );
+        DECODE_SIGNIFICANCE( 63, sig_off[last], last_coeff_flag_offset_8x8[last] );
     } else {
         if (is_dc && chroma422) { // dc 422
             DECODE_SIGNIFICANCE(7, sig_coeff_offset_dc[last], sig_coeff_offset_dc[last]);
@@ -1859,8 +1864,8 @@ static av_always_inline void decode_cabac_luma_residual( H264Context *h, const u
 }
 
 /**
- * Decode a macroblock.
- * @return 0 if OK, ER_AC_ERROR / ER_DC_ERROR / ER_MV_ERROR if an error is noticed
+ * decodes a macroblock
+ * @return 0 if OK, AC_ERROR / DC_ERROR / MV_ERROR if an error is noticed
  */
 int ff_h264_decode_mb_cabac(H264Context *h) {
     MpegEncContext * const s = &h->s;
@@ -1977,8 +1982,8 @@ decode_intra_mb:
     h->slice_table[ mb_xy ]= h->slice_num;
 
     if(IS_INTRA_PCM(mb_type)) {
-        const int mb_size = ff_h264_mb_sizes[h->sps.chroma_format_idc] *
-                            h->sps.bit_depth_luma >> 3;
+        static const uint16_t mb_sizes[4] = {256,384,512,768};
+        const int mb_size = mb_sizes[h->sps.chroma_format_idc]*h->sps.bit_depth_luma >> 3;
         const uint8_t *ptr;
 
         // We assume these blocks are very rare so we do not optimize it.
@@ -1991,8 +1996,6 @@ decode_intra_mb:
         }
 
         // The pixels are stored in the same order as levels in h->mb array.
-        if ((int) (h->cabac.bytestream_end - ptr) < mb_size)
-            return -1;
         memcpy(h->mb, ptr, mb_size); ptr+=mb_size;
 
         ff_init_cabac_decoder(&h->cabac, ptr, h->cabac.bytestream_end - ptr);
@@ -2037,14 +2040,14 @@ decode_intra_mb:
             write_back_intra_pred_mode(h);
             if( ff_h264_check_intra4x4_pred_mode(h) < 0 ) return -1;
         } else {
-            h->intra16x16_pred_mode= ff_h264_check_intra_pred_mode( h, h->intra16x16_pred_mode, 0 );
+            h->intra16x16_pred_mode= ff_h264_check_intra16x16_pred_mode( h, h->intra16x16_pred_mode );
             if( h->intra16x16_pred_mode < 0 ) return -1;
         }
         if(decode_chroma){
             h->chroma_pred_mode_table[mb_xy] =
             pred_mode                        = decode_cabac_mb_chroma_pre_mode( h );
 
-            pred_mode= ff_h264_check_intra_pred_mode( h, pred_mode, 1 );
+            pred_mode= ff_h264_check_intra_chroma_pred_mode( h, pred_mode );
             if( pred_mode < 0 ) return -1;
             h->chroma_pred_mode= pred_mode;
         } else {

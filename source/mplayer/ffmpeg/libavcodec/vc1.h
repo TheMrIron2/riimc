@@ -28,8 +28,6 @@
 #include "intrax8.h"
 #include "vc1dsp.h"
 
-#define AC_VLC_BITS 9
-
 /** Markers used in VC-1 AP frame data */
 //@{
 enum VC1Code {
@@ -349,7 +347,7 @@ typedef struct VC1Context{
     uint8_t fourmvbp;
     uint8_t* fieldtx_plane;
     int fieldtx_is_raw;
-    uint8_t zzi_8x8[64];
+    int8_t zzi_8x8[64];
     uint8_t *blk_mv_type_base, *blk_mv_type;    ///< 0: frame MV, 1: field MV (interlaced frame)
     uint8_t *mv_f_base, *mv_f[2];               ///< 0: MV obtained from same field, 1: opposite field
     uint8_t *mv_f_last_base, *mv_f_last[2];
@@ -443,12 +441,11 @@ static av_always_inline int vc1_unescape_buffer(const uint8_t *src, int size, ui
  * @param gb GetBit context initialized from Codec context extra_data
  * @return Status
  */
-int ff_vc1_decode_sequence_header(AVCodecContext *avctx, VC1Context *v, GetBitContext *gb);
+int vc1_decode_sequence_header(AVCodecContext *avctx, VC1Context *v, GetBitContext *gb);
 
-int ff_vc1_decode_entry_point(AVCodecContext *avctx, VC1Context *v, GetBitContext *gb);
+int vc1_decode_entry_point(AVCodecContext *avctx, VC1Context *v, GetBitContext *gb);
 
-int ff_vc1_parse_frame_header    (VC1Context *v, GetBitContext *gb);
-int ff_vc1_parse_frame_header_adv(VC1Context *v, GetBitContext *gb);
-int ff_vc1_init_common(VC1Context *v);
+int vc1_parse_frame_header    (VC1Context *v, GetBitContext *gb);
+int vc1_parse_frame_header_adv(VC1Context *v, GetBitContext *gb);
 
 #endif /* AVCODEC_VC1_H */

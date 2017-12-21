@@ -34,26 +34,23 @@
 
 typedef struct AascContext {
     AVCodecContext *avctx;
-    GetByteContext gb;
     AVFrame frame;
 } AascContext;
+
+#define FETCH_NEXT_STREAM_BYTE() \
+    if (stream_ptr >= buf_size) \
+    { \
+      av_log(s->avctx, AV_LOG_ERROR, " AASC: stream ptr just went out of bounds (fetch)\n"); \
+      break; \
+    } \
+    stream_byte = buf[stream_ptr++];
 
 static av_cold int aasc_decode_init(AVCodecContext *avctx)
 {
     AascContext *s = avctx->priv_data;
 
     s->avctx = avctx;
-    switch (avctx->bits_per_coded_sample) {
-    case 16:
-        avctx->pix_fmt = PIX_FMT_RGB555;
-        break;
-    case 24:
-        avctx->pix_fmt = PIX_FMT_BGR24;
-        break;
-    default:
-        av_log(avctx, AV_LOG_ERROR, "Unsupported bit depth: %d\n", avctx->bits_per_coded_sample);
-        return -1;
-    }
+    avctx->pix_fmt = PIX_FMT_BGR24;
     avcodec_get_frame_defaults(&s->frame);
 
     return 0;
@@ -78,12 +75,6 @@ static int aasc_decode_frame(AVCodecContext *avctx,
     compr = AV_RL32(buf);
     buf += 4;
     buf_size -= 4;
-    switch (avctx->codec_tag) {
-    case MKTAG('A', 'A', 'S', '4'):
-        bytestream2_init(&s->gb, buf - 4, buf_size + 4);
-        ff_msrle_decode(avctx, (AVPicture*)&s->frame, 8, &s->gb);
-        break;
-    case MKTAG('A', 'A', 'S', 'C'):
     switch(compr){
     case 0:
         stride = (avctx->width * 3 + 3) & ~3;
@@ -98,16 +89,10 @@ static int aasc_decode_frame(AVCodecContext *avctx,
         }
         break;
     case 1:
-        bytestream2_init(&s->gb, buf, buf_size);
-        ff_msrle_decode(avctx, (AVPicture*)&s->frame, 8, &s->gb);
+        ff_msrle_decode(avctx, (AVPicture*)&s->frame, 8, buf - 4, buf_size + 4);
         break;
     default:
         av_log(avctx, AV_LOG_ERROR, "Unknown compression type %d\n", compr);
-        return -1;
-    }
-        break;
-    default:
-        av_log(avctx, AV_LOG_ERROR, "Unknown FourCC: %X\n", avctx->codec_tag);
         return -1;
     }
 
@@ -138,5 +123,5 @@ AVCodec ff_aasc_decoder = {
     .close          = aasc_decode_end,
     .decode         = aasc_decode_frame,
     .capabilities   = CODEC_CAP_DR1,
-    .long_name      = NULL_IF_CONFIG_SMALL("Autodesk RLE"),
+    .long_name = NULL_IF_CONFIG_SMALL("Autodesk RLE"),
 };

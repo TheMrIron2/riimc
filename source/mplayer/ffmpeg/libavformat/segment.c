@@ -1,5 +1,5 @@
 /*
- * Generic segmenter
+ * Generic Segmenter
  * Copyright (c) 2011, Luca Barbato
  *
  * This file is part of Libav.
@@ -19,49 +19,43 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <strings.h>
-#include <float.h>
-
-#include "avformat.h"
-#include "internal.h"
-
+#include "libavutil/avstring.h"
 #include "libavutil/log.h"
 #include "libavutil/opt.h"
-#include "libavutil/avstring.h"
-#include "libavutil/parseutils.h"
 #include "libavutil/mathematics.h"
+#include "libavutil/parseutils.h"
+#include "avformat.h"
+#include "internal.h"
+#include <strings.h>
+#include <float.h>
 
 typedef struct {
     const AVClass *class;  /**< Class for private options. */
     int number;
     AVFormatContext *avf;
     char *format;          /**< Set by a private option. */
-    char *list;            /**< Set by a private option. */
+    char *pattern;         /**< Set by a private option. */
+    char *path;            /**< Set by a private option. */
     float time;            /**< Set by a private option. */
-    int  size;             /**< Set by a private option. */
-    int  wrap;             /**< Set by a private option. */
     int64_t offset_time;
     int64_t recording_time;
-    int has_video;
-    AVIOContext *pb;
 } SegmentContext;
 
-static int segment_start(AVFormatContext *s)
+#if CONFIG_SEGMENT_MUXER
+
+static int segment_header(SegmentContext *s)
 {
-    SegmentContext *c = s->priv_data;
-    AVFormatContext *oc = c->avf;
+    AVFormatContext *oc = s->avf;
     int err = 0;
 
-    if (c->wrap)
-        c->number %= c->wrap;
+    av_strlcpy(oc->filename, s->path, sizeof(oc->filename));
 
-    if (av_get_frame_filename(oc->filename, sizeof(oc->filename),
-                              s->filename, c->number++) < 0)
-        return AVERROR(EINVAL);
+    av_strlcatf(oc->filename, sizeof(oc->filename),
+                s->pattern, s->number++);
 
-    if ((err = avio_open2(&oc->pb, oc->filename, AVIO_FLAG_WRITE,
-                          &s->interrupt_callback, NULL)) < 0)
+    if ((err = avio_open(&oc->pb, oc->filename, AVIO_FLAG_WRITE)) < 0) {
         return err;
+    }
 
     if (!oc->priv_data && oc->oformat->priv_data_size > 0) {
         oc->priv_data = av_mallocz(oc->oformat->priv_data_size);
@@ -69,35 +63,24 @@ static int segment_start(AVFormatContext *s)
             avio_close(oc->pb);
             return AVERROR(ENOMEM);
         }
-        if (oc->oformat->priv_class) {
-            *(const AVClass**)oc->priv_data = oc->oformat->priv_class;
-            av_opt_set_defaults(oc->priv_data);
-        }
     }
 
     if ((err = oc->oformat->write_header(oc)) < 0) {
-        goto fail;
+        avio_close(oc->pb);
+        av_freep(&oc->priv_data);
     }
-
-    return 0;
-
-fail:
-    avio_close(oc->pb);
-    av_freep(&oc->priv_data);
 
     return err;
 }
 
-static int segment_end(AVFormatContext *oc)
+static int segment_trailer(AVFormatContext *oc)
 {
     int ret = 0;
 
-    if (oc->oformat->write_trailer)
+    if(oc->oformat->write_trailer)
         ret = oc->oformat->write_trailer(oc);
 
     avio_close(oc->pb);
-    if (oc->oformat->priv_class)
-        av_opt_free(oc->priv_data);
     av_freep(&oc->priv_data);
 
     return ret;
@@ -107,42 +90,30 @@ static int seg_write_header(AVFormatContext *s)
 {
     SegmentContext *seg = s->priv_data;
     AVFormatContext *oc;
-    int ret, i;
+    int ret;
 
     seg->number = 0;
+    seg->recording_time = seg->time*1000000;
     seg->offset_time = 0;
-    seg->recording_time = seg->time * 1000000;
+
+    if (!seg->path) {
+        char *t;
+        seg->path = av_strdup(s->filename);
+        t = strrchr(seg->path, '.');
+        if (t) *t = '\0';
+    }
 
     oc = avformat_alloc_context();
 
-    if (!oc)
+    if (!oc) {
         return AVERROR(ENOMEM);
+    }
 
-    if (seg->list)
-        if ((ret = avio_open2(&seg->pb, seg->list, AVIO_FLAG_WRITE,
-                              &s->interrupt_callback, NULL)) < 0)
-            goto fail;
-
-    for (i = 0; i< s->nb_streams; i++)
-        seg->has_video +=
-            (s->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO);
-
-    if (seg->has_video > 1)
-        av_log(s, AV_LOG_WARNING,
-               "More than a single video stream present, "
-               "expect issues decoding it.\n");
-
-    oc->oformat = av_guess_format(seg->format, s->filename, NULL);
+    oc->oformat = av_guess_format(seg->format, NULL, NULL);
 
     if (!oc->oformat) {
-        ret = AVERROR_MUXER_NOT_FOUND;
-        goto fail;
-    }
-    if (oc->oformat->flags & AVFMT_NOFILE) {
-        av_log(s, AV_LOG_ERROR, "format %s not supported.\n",
-               oc->oformat->name);
-        ret = AVERROR(EINVAL);
-        goto fail;
+        avformat_free_context(oc);
+        return AVERROR_MUXER_NOT_FOUND;
     }
 
     seg->avf = oc;
@@ -150,36 +121,26 @@ static int seg_write_header(AVFormatContext *s)
     oc->streams = s->streams;
     oc->nb_streams = s->nb_streams;
 
-    if (av_get_frame_filename(oc->filename, sizeof(oc->filename),
-                              s->filename, seg->number++) < 0) {
-        ret = AVERROR(EINVAL);
-        goto fail;
-    }
+    av_strlcpy(oc->filename, seg->path, sizeof(oc->filename));
 
-    if ((ret = avio_open2(&oc->pb, oc->filename, AVIO_FLAG_WRITE,
-                          &s->interrupt_callback, NULL)) < 0)
-        goto fail;
+    av_strlcatf(oc->filename, sizeof(oc->filename),
+                seg->pattern, seg->number++);
+
+    if ((ret = avio_open(&oc->pb, oc->filename, AVIO_FLAG_WRITE)) < 0) {
+        avformat_free_context(oc);
+        return ret;
+    }
 
     if ((ret = avformat_write_header(oc, NULL)) < 0) {
         avio_close(oc->pb);
-        goto fail;
     }
 
-    if (seg->list) {
-        avio_printf(seg->pb, "%s\n", oc->filename);
-        avio_flush(seg->pb);
-    }
+    if (ret)
+        avformat_free_context(oc);
 
-fail:
-    if (ret) {
-        if (oc) {
-            oc->streams = NULL;
-            oc->nb_streams = 0;
-            avformat_free_context(oc);
-        }
-        if (seg->list)
-            avio_close(seg->pb);
-    }
+    avio_printf(s->pb, "%s\n", oc->filename);
+    avio_flush(s->pb);
+
     return ret;
 }
 
@@ -188,47 +149,29 @@ static int seg_write_packet(AVFormatContext *s, AVPacket *pkt)
     SegmentContext *seg = s->priv_data;
     AVFormatContext *oc = seg->avf;
     AVStream *st = oc->streams[pkt->stream_index];
-    int64_t end_pts = seg->recording_time * seg->number;
     int ret;
 
-    if ((seg->has_video && st->codec->codec_type == AVMEDIA_TYPE_VIDEO) &&
+    if (st->codec->codec_type == AVMEDIA_TYPE_VIDEO &&
         av_compare_ts(pkt->pts, st->time_base,
-                      end_pts, AV_TIME_BASE_Q) >= 0 &&
+                  seg->recording_time*seg->number,
+                              (AVRational){1, 1000000}) >= 0 &&
         pkt->flags & AV_PKT_FLAG_KEY) {
-
-        av_log(s, AV_LOG_DEBUG, "Next segment starts at %d %"PRId64"\n",
+        av_log(s, AV_LOG_INFO, "I'd reset at %d %"PRId64"\n",
                pkt->stream_index, pkt->pts);
 
-        ret = segment_end(oc);
-
+        ret = segment_trailer(oc);
         if (!ret)
-            ret = segment_start(s);
+            ret = segment_header(seg);
 
-        if (ret)
-            goto fail;
-
-        if (seg->list) {
-            avio_printf(seg->pb, "%s\n", oc->filename);
-            avio_flush(seg->pb);
-            if (seg->size && !(seg->number % seg->size)) {
-                avio_close(seg->pb);
-                if ((ret = avio_open2(&seg->pb, seg->list, AVIO_FLAG_WRITE,
-                                      &s->interrupt_callback, NULL)) < 0)
-                    goto fail;
-            }
+        if (ret) {
+            avformat_free_context(oc);
+            return ret;
         }
+        avio_printf(s->pb, "%s\n", oc->filename);
+        avio_flush(s->pb);
     }
 
     ret = oc->oformat->write_packet(oc, pkt);
-
-fail:
-    if (ret < 0) {
-        oc->streams = NULL;
-        oc->nb_streams = 0;
-        if (seg->list)
-            avio_close(seg->pb);
-        avformat_free_context(oc);
-    }
 
     return ret;
 }
@@ -237,23 +180,19 @@ static int seg_write_trailer(struct AVFormatContext *s)
 {
     SegmentContext *seg = s->priv_data;
     AVFormatContext *oc = seg->avf;
-    int ret = segment_end(oc);
-    if (seg->list)
-        avio_close(seg->pb);
-    oc->streams = NULL;
-    oc->nb_streams = 0;
-    avformat_free_context(oc);
-    return ret;
+
+    return segment_trailer(oc);
 }
+
+#endif /* CONFIG_SEGMENT_MUXER */
 
 #define OFFSET(x) offsetof(SegmentContext, x)
 #define E AV_OPT_FLAG_ENCODING_PARAM
 static const AVOption options[] = {
-    { "segment_format",    "container format used for the segments",  OFFSET(format),  AV_OPT_TYPE_STRING, {.str = NULL},  0, 0,       E },
-    { "segment_time",      "segment length in seconds",               OFFSET(time),    AV_OPT_TYPE_FLOAT,  {.dbl = 2},     0, FLT_MAX, E },
-    { "segment_list",      "output the segment list",                 OFFSET(list),    AV_OPT_TYPE_STRING, {.str = NULL},  0, 0,       E },
-    { "segment_list_size", "maximum number of playlist entries",      OFFSET(size),    AV_OPT_TYPE_INT,    {.dbl = 5},     0, INT_MAX, E },
-    { "segment_wrap",      "number after which the index wraps",      OFFSET(wrap),    AV_OPT_TYPE_INT,    {.dbl = 0},     0, INT_MAX, E },
+    { "container_format", "container format used for the segments", OFFSET(format), AV_OPT_TYPE_STRING, {.str = "nut"},  0, 0, E },
+    { "segment_time",     "segment lenght in seconds",              OFFSET(time),   AV_OPT_TYPE_FLOAT,  {.dbl = 2},      0, FLT_MAX, E },
+    { "segment_pattern",  "pattern to use in segment files",        OFFSET(pattern),AV_OPT_TYPE_STRING, {.str = "%03d"}, 0, 0, E },
+    { "segment_basename", "basename to use in segment files",       OFFSET(path   ),AV_OPT_TYPE_STRING, {.str = NULL},   0, 0, E },
     { NULL },
 };
 
@@ -264,14 +203,32 @@ static const AVClass seg_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
+/* input
+#if CONFIG_IMAGE2_DEMUXER
+AVInputFormat ff_image2_demuxer = {
+    .name           = "image2",
+    .long_name      = NULL_IF_CONFIG_SMALL("image2 sequence"),
+    .priv_data_size = sizeof(VideoData),
+    .read_probe     = read_probe,
+    .read_header    = read_header,
+    .read_packet    = read_packet,
+    .flags          = AVFMT_NOFILE,
+    .priv_class     = &img2_class,
+};
+#endif
+*/
 
+/* output */
+#if CONFIG_SEGMENT_MUXER
 AVOutputFormat ff_segment_muxer = {
     .name           = "segment",
     .long_name      = NULL_IF_CONFIG_SMALL("segment muxer"),
+    .extensions     = "m3u8",
     .priv_data_size = sizeof(SegmentContext),
-    .flags          = AVFMT_GLOBALHEADER | AVFMT_NOFILE,
+    .flags          = AVFMT_GLOBALHEADER,
     .write_header   = seg_write_header,
     .write_packet   = seg_write_packet,
     .write_trailer  = seg_write_trailer,
     .priv_class     = &seg_class,
 };
+#endif

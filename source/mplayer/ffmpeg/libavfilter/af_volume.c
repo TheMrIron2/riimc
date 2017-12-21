@@ -26,9 +26,7 @@
 
 #include "libavutil/audioconvert.h"
 #include "libavutil/eval.h"
-#include "audio.h"
 #include "avfilter.h"
-#include "formats.h"
 
 typedef struct {
     double volume;
@@ -50,7 +48,9 @@ static av_cold int init(AVFilterContext *ctx, const char *args, void *opaque)
         if (*tail) {
             if (!strcmp(tail, "dB")) {
                 /* consider the argument an adjustement in decibels */
-                d = pow(10, d/20);
+                if (!strcmp(tail, "dB")) {
+                    d = pow(10,d/20);
+                }
             } else {
                 /* parse the argument as an expression */
                 ret = av_expr_parse_and_eval(&d, args, NULL, NULL,
@@ -82,7 +82,6 @@ static av_cold int init(AVFilterContext *ctx, const char *args, void *opaque)
 static int query_formats(AVFilterContext *ctx)
 {
     AVFilterFormats *formats = NULL;
-    AVFilterChannelLayouts *layouts;
     enum AVSampleFormat sample_fmts[] = {
         AV_SAMPLE_FMT_U8,
         AV_SAMPLE_FMT_S16,
@@ -91,21 +90,22 @@ static int query_formats(AVFilterContext *ctx)
         AV_SAMPLE_FMT_DBL,
         AV_SAMPLE_FMT_NONE
     };
+    int packing_fmts[] = { AVFILTER_PACKED, -1 };
 
-    layouts = ff_all_channel_layouts();
-    if (!layouts)
+    formats = avfilter_make_all_channel_layouts();
+    if (!formats)
         return AVERROR(ENOMEM);
-    ff_set_common_channel_layouts(ctx, layouts);
+    avfilter_set_common_channel_layouts(ctx, formats);
 
     formats = avfilter_make_format_list(sample_fmts);
     if (!formats)
         return AVERROR(ENOMEM);
     avfilter_set_common_sample_formats(ctx, formats);
 
-    formats = ff_all_samplerates();
+    formats = avfilter_make_format_list(packing_fmts);
     if (!formats)
         return AVERROR(ENOMEM);
-    ff_set_common_samplerates(ctx, formats);
+    avfilter_set_common_packing_formats(ctx, formats);
 
     return 0;
 }
@@ -169,7 +169,7 @@ static void filter_samples(AVFilterLink *inlink, AVFilterBufferRef *insamples)
         }
         }
     }
-    ff_filter_samples(outlink, insamples);
+    avfilter_filter_samples(outlink, insamples);
 }
 
 AVFilter avfilter_af_volume = {

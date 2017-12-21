@@ -41,7 +41,7 @@ update()(
 
 configure()(
     cd ${build} || return
-    ${shell} ${src}/configure                                           \
+    ${src}/configure                                                    \
         --prefix="${inst}"                                              \
         --samples="${samples}"                                          \
         --enable-gpl                                                    \

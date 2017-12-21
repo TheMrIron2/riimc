@@ -124,23 +124,19 @@ int ff_network_inited_globally;
 
 int ff_network_init(void)
 {
-#if HAVE_WINSOCK2_H
-    WSADATA wsaData;
-#endif
-
     if (!ff_network_inited_globally)
         av_log(NULL, AV_LOG_WARNING, "Using network protocols without global "
                                      "network initialization. Please use "
                                      "avformat_network_init(), this will "
                                      "become mandatory later.\n");
 #if HAVE_WINSOCK2_H
+    WSADATA wsaData;
     if (WSAStartup(MAKEWORD(1,1), &wsaData))
         return 0;
 #endif
     return 1;
 }
 
-#ifndef GEKKO
 int ff_network_wait_fd(int fd, int write)
 {
     int ev = write ? POLLOUT : POLLIN;
@@ -149,7 +145,6 @@ int ff_network_wait_fd(int fd, int write)
     ret = poll(&p, 1, 100);
     return ret < 0 ? ff_neterrno() : p.revents & (ev | POLLERR | POLLHUP) ? 0 : AVERROR(EAGAIN);
 }
-#endif
 
 void ff_network_close(void)
 {
@@ -185,3 +180,4 @@ int ff_is_multicast_address(struct sockaddr *addr)
 
     return 0;
 }
+

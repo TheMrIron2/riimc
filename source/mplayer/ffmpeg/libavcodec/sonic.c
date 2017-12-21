@@ -860,7 +860,7 @@ static int sonic_decode_frame(AVCodecContext *avctx,
     SonicContext *s = avctx->priv_data;
     GetBitContext gb;
     int i, quant, ch, j, ret;
-    int16_t *samples;
+    short *samples;
 
     if (buf_size == 0) return 0;
 
@@ -869,7 +869,7 @@ static int sonic_decode_frame(AVCodecContext *avctx,
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return ret;
     }
-    samples = (int16_t *)s->frame.data[0];
+    samples = s->frame.data[0];
 
 //    av_log(NULL, AV_LOG_INFO, "buf_size: %d\n", buf_size);
 
@@ -955,35 +955,35 @@ AVCodec ff_sonic_decoder = {
     .init           = sonic_decode_init,
     .close          = sonic_decode_close,
     .decode         = sonic_decode_frame,
-    .capabilities   = CODEC_CAP_DR1 | CODEC_CAP_EXPERIMENTAL,
+    .capabilities   = CODEC_CAP_DR1,
     .long_name = NULL_IF_CONFIG_SMALL("Sonic"),
 };
 #endif /* CONFIG_SONIC_DECODER */
 
 #if CONFIG_SONIC_ENCODER
 AVCodec ff_sonic_encoder = {
-    .name           = "sonic",
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = CODEC_ID_SONIC,
-    .priv_data_size = sizeof(SonicContext),
-    .init           = sonic_encode_init,
-    .encode         = sonic_encode_frame,
-    .capabilities   = CODEC_CAP_EXPERIMENTAL,
-    .close          = sonic_encode_close,
+    "sonic",
+    AVMEDIA_TYPE_AUDIO,
+    CODEC_ID_SONIC,
+    sizeof(SonicContext),
+    sonic_encode_init,
+    sonic_encode_frame,
+    sonic_encode_close,
+    NULL,
     .long_name = NULL_IF_CONFIG_SMALL("Sonic"),
 };
 #endif
 
 #if CONFIG_SONIC_LS_ENCODER
 AVCodec ff_sonic_ls_encoder = {
-    .name           = "sonicls",
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = CODEC_ID_SONIC_LS,
-    .priv_data_size = sizeof(SonicContext),
-    .init           = sonic_encode_init,
-    .encode         = sonic_encode_frame,
-    .capabilities   = CODEC_CAP_EXPERIMENTAL,
-    .close          = sonic_encode_close,
+    "sonicls",
+    AVMEDIA_TYPE_AUDIO,
+    CODEC_ID_SONIC_LS,
+    sizeof(SonicContext),
+    sonic_encode_init,
+    sonic_encode_frame,
+    sonic_encode_close,
+    NULL,
     .long_name = NULL_IF_CONFIG_SMALL("Sonic lossless"),
 };
 #endif

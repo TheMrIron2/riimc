@@ -146,7 +146,8 @@ static int dct_quantize_bfin (MpegEncContext *s,
     return last_non_zero;
 }
 
-void ff_MPV_common_init_bfin (MpegEncContext *s)
+void MPV_common_init_bfin (MpegEncContext *s)
 {
 /*     s->dct_quantize= dct_quantize_bfin; */
 }
+

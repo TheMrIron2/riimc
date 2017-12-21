@@ -29,13 +29,13 @@
  */
 
 #include "avcodec.h"
-#define BITSTREAM_READER_LE
+#define ALT_BITSTREAM_READER_LE
 #include "get_bits.h"
 #include "dsputil.h"
 #include "dct.h"
 #include "rdft.h"
 #include "fmtconvert.h"
-#include "libavutil/intfloat.h"
+#include "libavutil/intfloat_readwrite.h"
 
 extern const uint16_t ff_wma_critical_freqs[25];
 
@@ -79,7 +79,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
     int i;
     int frame_len_bits;
 
-    ff_dsputil_init(&s->dsp, avctx);
+    dsputil_init(&s->dsp, avctx);
     ff_fmt_convert_init(&s->fmt_conv, avctx);
 
     /* determine frame length */
@@ -91,9 +91,9 @@ static av_cold int decode_init(AVCodecContext *avctx)
         frame_len_bits = 11;
     }
 
-    if (avctx->channels < 1 || avctx->channels > MAX_CHANNELS) {
-        av_log(avctx, AV_LOG_ERROR, "invalid number of channels: %d\n", avctx->channels);
-        return AVERROR_INVALIDDATA;
+    if (avctx->channels > MAX_CHANNELS) {
+        av_log(avctx, AV_LOG_ERROR, "too many channels: %d\n", avctx->channels);
+        return -1;
     }
 
     s->version_b = avctx->extradata && avctx->extradata[3] == 'b';
@@ -193,8 +193,8 @@ static int decode_block(BinkAudioContext *s, int16_t *out, int use_dct)
         if (s->version_b) {
             if (get_bits_left(gb) < 64)
                 return AVERROR_INVALIDDATA;
-            coeffs[0] = av_int2float(get_bits_long(gb, 32)) * s->root;
-            coeffs[1] = av_int2float(get_bits_long(gb, 32)) * s->root;
+            coeffs[0] = av_int2flt(get_bits(gb, 32)) * s->root;
+            coeffs[1] = av_int2flt(get_bits(gb, 32)) * s->root;
         } else {
             if (get_bits_left(gb) < 58)
                 return AVERROR_INVALIDDATA;
@@ -367,7 +367,7 @@ AVCodec ff_binkaudio_rdft_decoder = {
     .close          = decode_end,
     .decode         = decode_frame,
     .capabilities   = CODEC_CAP_DELAY | CODEC_CAP_DR1,
-    .long_name      = NULL_IF_CONFIG_SMALL("Bink Audio (RDFT)")
+    .long_name = NULL_IF_CONFIG_SMALL("Bink Audio (RDFT)")
 };
 
 AVCodec ff_binkaudio_dct_decoder = {
@@ -379,5 +379,5 @@ AVCodec ff_binkaudio_dct_decoder = {
     .close          = decode_end,
     .decode         = decode_frame,
     .capabilities   = CODEC_CAP_DELAY | CODEC_CAP_DR1,
-    .long_name      = NULL_IF_CONFIG_SMALL("Bink Audio (DCT)")
+    .long_name = NULL_IF_CONFIG_SMALL("Bink Audio (DCT)")
 };

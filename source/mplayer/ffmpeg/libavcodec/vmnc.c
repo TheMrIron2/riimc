@@ -275,6 +275,11 @@ static int decode_hextile(VmncContext *c, uint8_t* dst, const uint8_t* src, int 
                     }
                     xy = *src++;
                     wh = *src++;
+                    if (   (xy >> 4) + (wh >> 4) + 1 > w - i
+                        || (xy & 0xF) + (wh & 0xF)+1 > h - j) {
+                        av_log(c->avctx, AV_LOG_ERROR, "Rectangle outside picture\n");
+                        return AVERROR_INVALIDDATA;
+                    }
                     paint_rect(dst2, xy >> 4, xy & 0xF, (wh>>4)+1, (wh & 0xF)+1, fg, bpp, stride);
                 }
             }
@@ -484,7 +489,6 @@ static av_cold int decode_init(AVCodecContext *avctx)
         break;
     default:
         av_log(avctx, AV_LOG_ERROR, "Unsupported bitdepth %i\n", c->bpp);
-        return AVERROR_INVALIDDATA;
     }
 
     return 0;
@@ -519,5 +523,6 @@ AVCodec ff_vmnc_decoder = {
     .close          = decode_end,
     .decode         = decode_frame,
     .capabilities   = CODEC_CAP_DR1,
-    .long_name      = NULL_IF_CONFIG_SMALL("VMware Screen Codec / VMware Video"),
+    .long_name = NULL_IF_CONFIG_SMALL("VMware Screen Codec / VMware Video"),
 };
+

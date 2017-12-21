@@ -69,9 +69,11 @@ static int rl2_probe(AVProbeData *p)
 /**
  * read rl2 header data and setup the avstreams
  * @param s demuxer context
+ * @param ap format parameters
  * @return 0 on success, AVERROR otherwise
  */
-static av_cold int rl2_read_header(AVFormatContext *s)
+static av_cold int rl2_read_header(AVFormatContext *s,
+                            AVFormatParameters *ap)
 {
     AVIOContext *pb = s->pb;
     AVStream *st;
@@ -296,3 +298,4 @@ AVInputFormat ff_rl2_demuxer = {
     .read_packet    = rl2_read_packet,
     .read_seek      = rl2_read_seek,
 };
+

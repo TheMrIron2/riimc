@@ -30,7 +30,7 @@ static int apc_probe(AVProbeData *p)
     return 0;
 }
 
-static int apc_read_header(AVFormatContext *s)
+static int apc_read_header(AVFormatContext *s, AVFormatParameters *ap)
 {
     AVIOContext *pb = s->pb;
     AVStream *st;
@@ -44,7 +44,7 @@ static int apc_read_header(AVFormatContext *s)
         return AVERROR(ENOMEM);
 
     st->codec->codec_type = AVMEDIA_TYPE_AUDIO;
-    st->codec->codec_id = CODEC_ID_ADPCM_IMA_APC;
+    st->codec->codec_id = CODEC_ID_ADPCM_IMA_WS;
 
     avio_rl32(pb); /* number of samples */
     st->codec->sample_rate = avio_rl32(pb);
@@ -76,7 +76,6 @@ static int apc_read_packet(AVFormatContext *s, AVPacket *pkt)
 {
     if (av_get_packet(s->pb, pkt, MAX_READ_SIZE) <= 0)
         return AVERROR(EIO);
-    pkt->flags &= ~AV_PKT_FLAG_CORRUPT;
     pkt->stream_index = 0;
     return 0;
 }

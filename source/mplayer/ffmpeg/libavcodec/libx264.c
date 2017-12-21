@@ -43,6 +43,7 @@ typedef struct X264Context {
     char *profile;
     char *level;
     int fastfirstpass;
+    char *stats;
     char *wpredp;
     char *x264opts;
     float crf;
@@ -69,7 +70,6 @@ typedef struct X264Context {
     char *partitions;
     int direct_pred;
     int slice_max_size;
-    char *stats;
 } X264Context;
 
 static void X264_log(void *p, int level, const char *fmt, va_list args)
@@ -88,23 +88,12 @@ static void X264_log(void *p, int level, const char *fmt, va_list args)
 }
 
 
-static int encode_nals(AVCodecContext *ctx, AVPacket *pkt,
-                       x264_nal_t *nals, int nnal)
+static int encode_nals(AVCodecContext *ctx, uint8_t *buf, int size,
+                       x264_nal_t *nals, int nnal, int skip_sei)
 {
     X264Context *x4 = ctx->priv_data;
-    uint8_t *p;
-    int i, size = x4->sei_size, ret;
-
-    if (!nnal)
-        return 0;
-
-    for (i = 0; i < nnal; i++)
-        size += nals[i].i_payload;
-
-    if ((ret = ff_alloc_packet2(ctx, pkt, size)) < 0)
-        return ret;
-
-    p = pkt->data;
+    uint8_t *p = buf;
+    int i;
 
     /* Write the SEI as part of the first frame. */
     if (x4->sei_size > 0 && nnal > 0) {
@@ -119,11 +108,23 @@ static int encode_nals(AVCodecContext *ctx, AVPacket *pkt,
     }
 
     for (i = 0; i < nnal; i++){
+        /* Don't put the SEI in extradata. */
+        if (skip_sei && nals[i].i_type == NAL_SEI) {
+            x4->sei_size = nals[i].i_payload;
+            x4->sei      = av_malloc(x4->sei_size);
+            memcpy(x4->sei, nals[i].p_payload, nals[i].i_payload);
+            continue;
+        }
+        if (nals[i].i_payload > (size - (p - buf))) {
+            // return only complete nals which fit in buf
+            av_log(ctx, AV_LOG_ERROR, "Error: nal buffer is too small\n");
+            break;
+        }
         memcpy(p, nals[i].p_payload, nals[i].i_payload);
         p += nals[i].i_payload;
     }
 
-    return 1;
+    return p - buf;
 }
 
 static int avfmt2_num_planes(int avfmt)
@@ -145,13 +146,15 @@ static int avfmt2_num_planes(int avfmt)
     }
 }
 
-static int X264_frame(AVCodecContext *ctx, AVPacket *pkt, const AVFrame *frame,
-                      int *got_packet)
+static int X264_frame(AVCodecContext *ctx, uint8_t *buf,
+                      int orig_bufsize, void *data)
 {
     X264Context *x4 = ctx->priv_data;
+    AVFrame *frame = data;
     x264_nal_t *nal;
-    int nnal, i, ret;
+    int nnal, i;
     x264_picture_t pic_out;
+    int bufsize;
 
     x264_picture_init( &x4->pic );
     x4->pic.img.i_csp   = x4->params.i_csp;
@@ -171,7 +174,7 @@ static int X264_frame(AVCodecContext *ctx, AVPacket *pkt, const AVFrame *frame,
             frame->pict_type == AV_PICTURE_TYPE_P ? X264_TYPE_P :
             frame->pict_type == AV_PICTURE_TYPE_B ? X264_TYPE_B :
                                             X264_TYPE_AUTO;
-        if (x4->params.b_tff != frame->top_field_first) {
+        if (x4->params.b_interlaced && x4->params.b_tff != frame->top_field_first) {
             x4->params.b_tff = frame->top_field_first;
             x264_encoder_reconfig(x4->enc, &x4->params);
         }
@@ -184,16 +187,17 @@ static int X264_frame(AVCodecContext *ctx, AVPacket *pkt, const AVFrame *frame,
     }
 
     do {
-        if (x264_encoder_encode(x4->enc, &nal, &nnal, frame? &x4->pic: NULL, &pic_out) < 0)
-            return -1;
+        bufsize = orig_bufsize;
+    if (x264_encoder_encode(x4->enc, &nal, &nnal, frame? &x4->pic: NULL, &pic_out) < 0)
+        return -1;
 
-        ret = encode_nals(ctx, pkt, nal, nnal);
-        if (ret < 0)
-            return -1;
-    } while (!ret && !frame && x264_encoder_delayed_frames(x4->enc));
+    bufsize = encode_nals(ctx, buf, bufsize, nal, nnal, 0);
+    if (bufsize < 0)
+        return -1;
+    } while (!bufsize && !frame && x264_encoder_delayed_frames(x4->enc));
 
-    pkt->pts = pic_out.i_pts;
-    pkt->dts = pic_out.i_dts;
+    /* FIXME: libx264 now provides DTS, but AVFrame doesn't have a field for it. */
+    x4->out_pic.pts = pic_out.i_pts;
 
     switch (pic_out.i_type) {
     case X264_TYPE_IDR:
@@ -209,12 +213,11 @@ static int X264_frame(AVCodecContext *ctx, AVPacket *pkt, const AVFrame *frame,
         break;
     }
 
-    pkt->flags |= AV_PKT_FLAG_KEY*pic_out.b_keyframe;
-    if (ret)
+    x4->out_pic.key_frame = pic_out.b_keyframe;
+    if (bufsize)
         x4->out_pic.quality = (pic_out.i_qpplus1 - 1) * FF_QP2LAMBDA;
 
-    *got_packet = ret;
-    return 0;
+    return bufsize;
 }
 
 static av_cold int X264_close(AVCodecContext *avctx)
@@ -242,7 +245,7 @@ static av_cold int X264_close(AVCodecContext *avctx)
                         "bad value for '%s': '%s'\n", opt, param);            \
             return -1;                                                        \
         }                                                                     \
-    } while (0)
+    } while (0);
 
 static int convert_pix_fmt(enum PixelFormat pix_fmt)
 {
@@ -311,6 +314,17 @@ static av_cold int X264_init(AVCodecContext *avctx)
     if (avctx->flags & CODEC_FLAG_PASS2) {
         x4->params.rc.b_stat_read = 1;
     } else {
+#if FF_API_X264_GLOBAL_OPTS
+        if (avctx->crf) {
+            x4->params.rc.i_rc_method   = X264_RC_CRF;
+            x4->params.rc.f_rf_constant = avctx->crf;
+            x4->params.rc.f_rf_constant_max = avctx->crf_max;
+        } else if (avctx->cqp > -1) {
+            x4->params.rc.i_rc_method   = X264_RC_CQP;
+            x4->params.rc.i_qp_constant = avctx->cqp;
+        }
+#endif
+
         if (x4->crf >= 0) {
             x4->params.rc.i_rc_method   = X264_RC_CRF;
             x4->params.rc.f_rf_constant = x4->crf;
@@ -322,6 +336,8 @@ static av_cold int X264_init(AVCodecContext *avctx)
         if (x4->crf_max >= 0)
             x4->params.rc.f_rf_constant_max = x4->crf_max;
     }
+
+    OPT_STR("stats", x4->stats);
 
     if (avctx->rc_buffer_size && avctx->rc_initial_buffer_occupancy &&
         (avctx->rc_initial_buffer_occupancy <= avctx->rc_buffer_size)) {
@@ -343,6 +359,55 @@ static av_cold int X264_init(AVCodecContext *avctx)
             p+=!!p;
         }
     }
+
+#if FF_API_X264_GLOBAL_OPTS
+    if (avctx->aq_mode >= 0)
+        x4->params.rc.i_aq_mode = avctx->aq_mode;
+    if (avctx->aq_strength >= 0)
+        x4->params.rc.f_aq_strength = avctx->aq_strength;
+    if (avctx->psy_rd >= 0)
+        x4->params.analyse.f_psy_rd           = avctx->psy_rd;
+    if (avctx->psy_trellis >= 0)
+        x4->params.analyse.f_psy_trellis      = avctx->psy_trellis;
+    if (avctx->rc_lookahead >= 0)
+        x4->params.rc.i_lookahead             = avctx->rc_lookahead;
+    if (avctx->weighted_p_pred >= 0)
+        x4->params.analyse.i_weighted_pred    = avctx->weighted_p_pred;
+    if (avctx->bframebias)
+        x4->params.i_bframe_bias              = avctx->bframebias;
+    if (avctx->deblockalpha)
+        x4->params.i_deblocking_filter_alphac0 = avctx->deblockalpha;
+    if (avctx->deblockbeta)
+        x4->params.i_deblocking_filter_beta    = avctx->deblockbeta;
+    if (avctx->complexityblur >= 0)
+        x4->params.rc.f_complexity_blur        = avctx->complexityblur;
+    if (avctx->directpred >= 0)
+        x4->params.analyse.i_direct_mv_pred    = avctx->directpred;
+    if (avctx->partitions) {
+        if (avctx->partitions & X264_PART_I4X4)
+            x4->params.analyse.inter |= X264_ANALYSE_I4x4;
+        if (avctx->partitions & X264_PART_I8X8)
+            x4->params.analyse.inter |= X264_ANALYSE_I8x8;
+        if (avctx->partitions & X264_PART_P8X8)
+            x4->params.analyse.inter |= X264_ANALYSE_PSUB16x16;
+        if (avctx->partitions & X264_PART_P4X4)
+            x4->params.analyse.inter |= X264_ANALYSE_PSUB8x8;
+        if (avctx->partitions & X264_PART_B8X8)
+            x4->params.analyse.inter |= X264_ANALYSE_BSUB16x16;
+    }
+    if (avctx->flags2) {
+        x4->params.analyse.b_ssim = avctx->flags2 & CODEC_FLAG2_SSIM;
+        x4->params.b_intra_refresh = avctx->flags2 & CODEC_FLAG2_INTRA_REFRESH;
+        x4->params.i_bframe_pyramid = avctx->flags2 & CODEC_FLAG2_BPYRAMID ? X264_B_PYRAMID_NORMAL : X264_B_PYRAMID_NONE;
+        x4->params.analyse.b_weighted_bipred  = avctx->flags2 & CODEC_FLAG2_WPRED;
+        x4->params.analyse.b_mixed_references = avctx->flags2 & CODEC_FLAG2_MIXED_REFS;
+        x4->params.analyse.b_transform_8x8    = avctx->flags2 & CODEC_FLAG2_8X8DCT;
+        x4->params.analyse.b_fast_pskip       = avctx->flags2 & CODEC_FLAG2_FASTPSKIP;
+        x4->params.b_aud                      = avctx->flags2 & CODEC_FLAG2_AUD;
+        x4->params.analyse.b_psy              = avctx->flags2 & CODEC_FLAG2_PSY;
+        x4->params.rc.b_mb_tree               = !!(avctx->flags2 & CODEC_FLAG2_MBTREE);
+    }
+#endif
 
     if (avctx->me_method == ME_EPZS)
         x4->params.analyse.i_me_method = X264_ME_DIA;
@@ -397,7 +462,6 @@ static av_cold int X264_init(AVCodecContext *avctx)
     PARSE_X264_OPT("psy-rd", psy_rd);
     PARSE_X264_OPT("deblock", deblock);
     PARSE_X264_OPT("partitions", partitions);
-    PARSE_X264_OPT("stats", stats);
     if (x4->psy >= 0)
         x4->params.analyse.b_psy  = x4->psy;
     if (x4->rc_lookahead >= 0)
@@ -453,8 +517,6 @@ static av_cold int X264_init(AVCodecContext *avctx)
     x4->params.analyse.b_psnr = avctx->flags & CODEC_FLAG_PSNR;
 
     x4->params.i_threads      = avctx->thread_count;
-    if (avctx->thread_type)
-        x4->params.b_sliced_threads = avctx->thread_type == FF_THREAD_SLICE;
 
     x4->params.b_interlaced   = avctx->flags & CODEC_FLAG_INTERLACED_DCT;
 
@@ -470,10 +532,10 @@ static av_cold int X264_init(AVCodecContext *avctx)
     // update AVCodecContext with x264 parameters
     avctx->has_b_frames = x4->params.i_bframe ?
         x4->params.i_bframe_pyramid ? 2 : 1 : 0;
-    if (avctx->max_b_frames < 0)
-        avctx->max_b_frames = 0;
-
     avctx->bit_rate = x4->params.rc.i_bitrate*1000;
+#if FF_API_X264_GLOBAL_OPTS
+    avctx->crf = x4->params.rc.f_rf_constant;
+#endif
 
     x4->enc = x264_encoder_open(&x4->params);
     if (!x4->enc)
@@ -483,25 +545,16 @@ static av_cold int X264_init(AVCodecContext *avctx)
 
     if (avctx->flags & CODEC_FLAG_GLOBAL_HEADER) {
         x264_nal_t *nal;
-        uint8_t *p;
         int nnal, s, i;
 
         s = x264_encoder_headers(x4->enc, &nal, &nnal);
-        avctx->extradata = p = av_malloc(s);
 
-        for (i = 0; i < nnal; i++) {
-            /* Don't put the SEI in extradata. */
-            if (nal[i].i_type == NAL_SEI) {
+        for (i = 0; i < nnal; i++)
+            if (nal[i].i_type == NAL_SEI)
                 av_log(avctx, AV_LOG_INFO, "%s\n", nal[i].p_payload+25);
-                x4->sei_size = nal[i].i_payload;
-                x4->sei      = av_malloc(x4->sei_size);
-                memcpy(x4->sei, nal[i].p_payload, nal[i].i_payload);
-                continue;
-            }
-            memcpy(p, nal[i].p_payload, nal[i].i_payload);
-            p += nal[i].i_payload;
-        }
-        avctx->extradata_size = p - avctx->extradata;
+
+        avctx->extradata      = av_malloc(s);
+        avctx->extradata_size = encode_nals(avctx, avctx->extradata, s, nal, nnal, 1);
     }
 
     return 0;
@@ -591,8 +644,7 @@ static const AVOption options[] = {
     { "spatial",       NULL,      0,    AV_OPT_TYPE_CONST, { X264_DIRECT_PRED_SPATIAL },  0, 0, VE, "direct-pred" },
     { "temporal",      NULL,      0,    AV_OPT_TYPE_CONST, { X264_DIRECT_PRED_TEMPORAL }, 0, 0, VE, "direct-pred" },
     { "auto",          NULL,      0,    AV_OPT_TYPE_CONST, { X264_DIRECT_PRED_AUTO },     0, 0, VE, "direct-pred" },
-    { "slice-max-size","Limit the size of each slice in bytes",           OFFSET(slice_max_size),AV_OPT_TYPE_INT,    {-1 }, -1, INT_MAX, VE },
-    { "stats",         "Filename for 2 pass stats",                       OFFSET(stats),         AV_OPT_TYPE_STRING, { 0 },  0,       0, VE },
+    { "slice-max-size","Constant quantization parameter rate control method",OFFSET(slice_max_size),        AV_OPT_TYPE_INT,    {-1 }, -1, INT_MAX, VE },
     { NULL },
 };
 
@@ -620,7 +672,7 @@ static const AVCodecDefault x264_defaults[] = {
     { "qdiff",            "-1" },
     { "qblur",            "-1" },
     { "qcomp",            "-1" },
-//     { "rc_lookahead",     "-1" },
+    { "rc_lookahead",     "-1" },
     { "refs",             "-1" },
     { "sc_threshold",     "-1" },
     { "trellis",          "-1" },
@@ -633,22 +685,21 @@ static const AVCodecDefault x264_defaults[] = {
     { "coder",            "-1" },
     { "cmp",              "-1" },
     { "threads",          AV_STRINGIFY(X264_THREADS_AUTO) },
-    { "thread_type",      "0" },
     { NULL },
 };
 
 AVCodec ff_libx264_encoder = {
-    .name             = "libx264",
-    .type             = AVMEDIA_TYPE_VIDEO,
-    .id               = CODEC_ID_H264,
-    .priv_data_size   = sizeof(X264Context),
-    .init             = X264_init,
-    .encode2          = X264_frame,
-    .close            = X264_close,
-    .capabilities     = CODEC_CAP_DELAY | CODEC_CAP_AUTO_THREADS,
-    .long_name        = NULL_IF_CONFIG_SMALL("libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10"),
-    .priv_class       = &class,
-    .defaults         = x264_defaults,
+    .name           = "libx264",
+    .type           = AVMEDIA_TYPE_VIDEO,
+    .id             = CODEC_ID_H264,
+    .priv_data_size = sizeof(X264Context),
+    .init           = X264_init,
+    .encode         = X264_frame,
+    .close          = X264_close,
+    .capabilities   = CODEC_CAP_DELAY,
+    .long_name      = NULL_IF_CONFIG_SMALL("libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10"),
+    .priv_class     = &class,
+    .defaults       = x264_defaults,
     .init_static_data = X264_init_static,
 };
 
@@ -658,7 +709,7 @@ AVCodec ff_libx264rgb_encoder = {
     .id             = CODEC_ID_H264,
     .priv_data_size = sizeof(X264Context),
     .init           = X264_init,
-    .encode2        = X264_frame,
+    .encode         = X264_frame,
     .close          = X264_close,
     .capabilities   = CODEC_CAP_DELAY,
     .long_name      = NULL_IF_CONFIG_SMALL("libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10 RGB"),

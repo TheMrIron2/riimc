@@ -36,7 +36,7 @@ $shift = "";
 %defs = ();
 $fnno = 1;
 $inf = "";
-@ibase = ();
+$ibase = "";
 
 while ($_ = shift) {
     if (/^-D(.*)$/) {
@@ -52,8 +52,6 @@ while ($_ = shift) {
         die "flags may only contain letters, digits, hyphens, dashes and underscores\n"
             unless $flag =~ /^[a-zA-Z0-9_-]+$/;
         $defs{$flag} = $value;
-    } elsif (/^-I(.*)$/) {
-        push @ibase, $1 ne "" ? $1 : shift;
     } elsif (/^-/) {
         usage();
     } else {
@@ -63,12 +61,10 @@ while ($_ = shift) {
     }
 }
 
-push @ibase, ".";
-
 if (defined $in) {
     $inf = gensym();
     open($inf, "<$in") or die "opening \"$in\": $!\n";
-    push @ibase, $1 if $in =~ m|^(.+)/[^/]+$|;
+    $ibase = $1 if $in =~ m|^(.+)/[^/]+$|;
 } else {
     $inf = \*STDIN;
 }
@@ -78,7 +74,7 @@ if (defined $out) {
 }
 
 while(defined $inf) {
-INF: while(<$inf>) {
+while(<$inf>) {
     # Certain commands are discarded without further processing.
     /^\@(?:
          [a-z]+index            # @*index: useful only in complete manual
@@ -108,10 +104,11 @@ INF: while(<$inf>) {
         push @instack, $inf;
         $inf = gensym();
 
-        for (@ibase) {
-            open($inf, "<" . $_ . "/" . $1) and next INF;
-        }
-        die "cannot open $1: $!\n";
+        # Try cwd and $ibase.
+        open($inf, "<" . $1)
+            or open($inf, "<" . $ibase . "/" . $1)
+                or die "cannot open $1 or $ibase/$1: $!\n";
+        next;
     };
 
     # Look for blocks surrounded by @c man begin SECTION ... @c man end.

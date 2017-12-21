@@ -1,3 +1,5 @@
 *.o
 *.d
 *.a
+source/mplayer/ffmpeg/test
+*.ffpreset

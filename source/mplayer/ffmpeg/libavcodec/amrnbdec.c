@@ -44,6 +44,7 @@
 #include <math.h>
 
 #include "avcodec.h"
+#include "get_bits.h"
 #include "libavutil/common.h"
 #include "celp_math.h"
 #include "celp_filters.h"
@@ -188,15 +189,16 @@ static av_cold int amrnb_decode_init(AVCodecContext *avctx)
 static enum Mode unpack_bitstream(AMRContext *p, const uint8_t *buf,
                                   int buf_size)
 {
+    GetBitContext gb;
     enum Mode mode;
 
-    // Decode the first octet.
-    mode = buf[0] >> 3 & 0x0F;                      // frame type
-    p->bad_frame_indicator = (buf[0] & 0x4) != 0x4; // quality bit
+    init_get_bits(&gb, buf, buf_size * 8);
 
-    if (mode >= N_MODES || buf_size < frame_sizes_nb[mode] + 1) {
-        return NO_DATA;
-    }
+    // Decode the first octet.
+    skip_bits(&gb, 1);                        // padding bit
+    mode = get_bits(&gb, 4);                  // frame type
+    p->bad_frame_indicator = !get_bits1(&gb); // quality bit
+    skip_bits(&gb, 2);                        // two padding bits
 
     if (mode < MODE_DTX)
         ff_amr_bit_reorder((uint16_t *) &p->frame, sizeof(AMRNBFrame), buf + 1,
@@ -945,10 +947,6 @@ static int amrnb_decode_frame(AVCodecContext *avctx, void *data,
     buf_out = (float *)p->avframe.data[0];
 
     p->cur_frame_mode = unpack_bitstream(p, buf, buf_size);
-    if (p->cur_frame_mode == NO_DATA) {
-        av_log(avctx, AV_LOG_ERROR, "Corrupt bitstream\n");
-        return AVERROR_INVALIDDATA;
-    }
     if (p->cur_frame_mode == MODE_DTX) {
         av_log_missing_feature(avctx, "dtx mode", 0);
         av_log(avctx, AV_LOG_INFO, "Note: libopencore_amrnb supports dtx\n");
@@ -980,10 +978,6 @@ static int amrnb_decode_frame(AVCodecContext *avctx, void *data,
 
         pitch_sharpening(p, subframe, p->cur_frame_mode, &fixed_sparse);
 
-        if (fixed_sparse.pitch_lag == 0) {
-            av_log(avctx, AV_LOG_ERROR, "The file is corrupted, pitch_lag = 0 is not allowed\n");
-            return AVERROR_INVALIDDATA;
-        }
         ff_set_fixed_vector(p->fixed_vector, &fixed_sparse, 1.0,
                             AMR_SUBFRAME_SIZE);
 
@@ -1064,6 +1058,5 @@ AVCodec ff_amrnb_decoder = {
     .decode         = amrnb_decode_frame,
     .capabilities   = CODEC_CAP_DR1,
     .long_name      = NULL_IF_CONFIG_SMALL("Adaptive Multi-Rate NarrowBand"),
-    .sample_fmts    = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_FLT,
-                                                     AV_SAMPLE_FMT_NONE },
+    .sample_fmts    = (const enum AVSampleFormat[]){AV_SAMPLE_FMT_FLT,AV_SAMPLE_FMT_NONE},
 };

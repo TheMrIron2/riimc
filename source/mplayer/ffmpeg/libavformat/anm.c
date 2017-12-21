@@ -76,7 +76,8 @@ static int find_record(const AnmDemuxContext *anm, int record)
     return AVERROR_INVALIDDATA;
 }
 
-static int read_header(AVFormatContext *s)
+static int read_header(AVFormatContext *s,
+                       AVFormatParameters *ap)
 {
     AnmDemuxContext *anm = s->priv_data;
     AVIOContext *pb = s->pb;

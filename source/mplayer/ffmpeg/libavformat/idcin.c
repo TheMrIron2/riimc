@@ -91,7 +91,7 @@ typedef struct IdcinDemuxContext {
 
 static int idcin_probe(AVProbeData *p)
 {
-    unsigned int number;
+    unsigned int number, sample_rate;
 
     /*
      * This is what you could call a "probabilistic" file check: id CIN
@@ -120,25 +120,26 @@ static int idcin_probe(AVProbeData *p)
        return 0;
 
     /* check the audio sample rate */
-    number = AV_RL32(&p->buf[8]);
-    if ((number != 0) && ((number < 8000) | (number > 48000)))
+    sample_rate = AV_RL32(&p->buf[8]);
+    if (sample_rate && (sample_rate < 8000 || sample_rate > 48000))
         return 0;
 
     /* check the audio bytes/sample */
     number = AV_RL32(&p->buf[12]);
-    if (number > 2)
+    if (number > 2 || sample_rate && !number)
         return 0;
 
     /* check the audio channels */
     number = AV_RL32(&p->buf[16]);
-    if (number > 2)
+    if (number > 2 || sample_rate && !number)
         return 0;
 
     /* return half certainly since this check is a bit sketchy */
     return AVPROBE_SCORE_MAX / 2;
 }
 
-static int idcin_read_header(AVFormatContext *s)
+static int idcin_read_header(AVFormatContext *s,
+                             AVFormatParameters *ap)
 {
     AVIOContext *pb = s->pb;
     IdcinDemuxContext *idcin = s->priv_data;
@@ -247,9 +248,7 @@ static int idcin_read_packet(AVFormatContext *s,
                 r = palette_buffer[i * 3    ] << palette_scale;
                 g = palette_buffer[i * 3 + 1] << palette_scale;
                 b = palette_buffer[i * 3 + 2] << palette_scale;
-                palette[i] = (0xFFU << 24) | (r << 16) | (g << 8) | (b);
-                if (palette_scale == 2)
-                    palette[i] |= palette[i] >> 6 & 0x30303;
+                palette[i] = (r << 16) | (g << 8) | (b);
             }
         }
 
@@ -265,8 +264,8 @@ static int idcin_read_packet(AVFormatContext *s,
 
             pal = av_packet_new_side_data(pkt, AV_PKT_DATA_PALETTE,
                                           AVPALETTE_SIZE);
-            if (!pal)
-                return AVERROR(ENOMEM);
+            if (ret < 0)
+                return ret;
             memcpy(pal, palette, AVPALETTE_SIZE);
         }
         pkt->stream_index = idcin->video_stream_index;

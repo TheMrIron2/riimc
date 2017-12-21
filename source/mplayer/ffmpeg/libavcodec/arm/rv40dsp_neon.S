@@ -372,7 +372,7 @@ endfunc
 
 function ff_\type\()_rv40_qpel8_mc33_neon, export=1
         mov             r3,  #8
-        b               X(ff_\type\()_pixels8_xy2_neon)
+        b               ff_\type\()_pixels8_xy2_neon
 endfunc
 
 function ff_\type\()_rv40_qpel8_mc13_neon, export=1
@@ -652,7 +652,7 @@ endfunc
 
 function ff_\type\()_rv40_qpel16_mc33_neon, export=1
         mov             r3,  #16
-        b               X(ff_\type\()_pixels16_xy2_neon)
+        b               ff_\type\()_pixels16_xy2_neon
 endfunc
 .endm
 
@@ -720,201 +720,5 @@ function ff_rv40_weight_func_8_neon, export=1
         vst1.8          {d3},     [r0,:64], r12
         subs            r3,  r3,  #2
         bne             1b
-        bx              lr
-endfunc
-
-function ff_rv40_h_loop_filter_strength_neon, export=1
-        pkhbt           r2,  r3,  r2,  lsl #18
-
-        ldr             r3,  [r0]
-        ldr_dpre        r12, r0,  r1
-        teq             r3,  r12
-        beq             1f
-
-        sub             r0,  r0,  r1,  lsl #1
-
-        vld1.32         {d4[]},   [r0,:32], r1  @ -3
-        vld1.32         {d0[]},   [r0,:32], r1  @ -2
-        vld1.32         {d4[1]},  [r0,:32], r1  @ -1
-        vld1.32         {d5[]},   [r0,:32], r1  @  0
-        vld1.32         {d1[]},   [r0,:32], r1  @  1
-        vld1.32         {d5[0]},  [r0,:32], r1  @  2
-
-        vpaddl.u8       q8,  q0                 @ -2, -2, -2, -2,  1,  1,  1,  1
-        vpaddl.u8       q9,  q2                 @ -3, -3, -1, -1,  2,  2,  0,  0
-        vdup.32         d30, r2                 @ beta2, beta << 2
-        vpadd.u16       d16, d16, d17           @ -2, -2,  1,  1
-        vpadd.u16       d18, d18, d19           @ -3, -1,  2,  0
-        vabd.u16        d16, d18, d16
-        vclt.u16        d16, d16, d30
-
-        ldrd            r2,  r3,  [sp, #4]
-        vmovl.u16       q12, d16
-        vtrn.16         d16, d17
-        vshr.u32        q12, q12, #15
-        ldr             r0,  [sp]
-        vst1.32         {d24[1]}, [r2,:32]
-        vst1.32         {d25[1]}, [r3,:32]
-
-        cmp             r0,  #0
-        it              eq
-        bxeq            lr
-
-        vand            d18, d16, d17
-        vtrn.32         d18, d19
-        vand            d18, d18, d19
-        vmov.u16        r0,  d18[0]
-        bx              lr
-1:
-        ldrd            r2,  r3,  [sp, #4]
-        mov             r0,  #0
-        str             r0,  [r2]
-        str             r0,  [r3]
-        bx              lr
-endfunc
-
-function ff_rv40_v_loop_filter_strength_neon, export=1
-        sub             r0,  r0,  #3
-        pkhbt           r2,  r3,  r2,  lsl #18
-
-        vld1.8          {d0},     [r0], r1
-        vld1.8          {d1},     [r0], r1
-        vld1.8          {d2},     [r0], r1
-        vld1.8          {d3},     [r0], r1
-
-        vaddl.u8        q0,  d0,  d1
-        vaddl.u8        q1,  d2,  d3
-        vdup.32         q15, r2
-        vadd.u16        q0,  q0,  q1            @ -3, -2, -1,  0,  1,  2
-        vext.16         q1,  q0,  q0,  #1       @ -2, -1,  0,  1,  2
-        vabd.u16        q0,  q1,  q0
-        vclt.u16        q0,  q0,  q15
-
-        ldrd            r2,  r3,  [sp, #4]
-        vmovl.u16       q1,  d0
-        vext.16         d1,  d0,  d1,  #3
-        vshr.u32        q1,  q1,  #15
-        ldr             r0,  [sp]
-        vst1.32         {d2[1]},  [r2,:32]
-        vst1.32         {d3[1]},  [r3,:32]
-
-        cmp             r0,  #0
-        it              eq
-        bxeq            lr
-
-        vand            d0,  d0,  d1
-        vtrn.16         d0,  d1
-        vand            d0,  d0,  d1
-        vmov.u16        r0,  d0[0]
-        bx              lr
-endfunc
-
-.macro  rv40_weak_loop_filter
-        vdup.16         d30, r2                 @ filter_p1
-        vdup.16         d31, r3                 @ filter_q1
-        ldrd            r2,  r3,  [sp]
-        vdup.16         d28, r2                 @ alpha
-        vdup.16         d29, r3                 @ beta
-        ldr             r12, [sp, #8]
-        vdup.16         d25, r12                @ lim_p0q0
-        ldrd            r2,  r3,  [sp, #12]
-        vsubl.u8        q9,  d5,  d4            @ x, t
-        vabdl.u8        q8,  d5,  d4            @ x, abs(t)
-        vneg.s16        q15, q15
-        vceq.i16        d16, d19, #0            @ !t
-        vshl.s16        d19, d19, #2            @ t << 2
-        vmul.u16        d18, d17, d28           @ alpha * abs(t)
-        vand            d24, d30, d31           @ filter_p1 & filter_q1
-        vsubl.u8        q1,  d0,  d4            @ p1p2, p1p0
-        vsubl.u8        q3,  d1,  d5            @ q1q2, q1q0
-        vmov.i16        d22, #3
-        vshr.u16        d18, d18, #7
-        vadd.i16        d22, d22, d24           @ 3 - (filter_p1 & filter_q1)
-        vsubl.u8        q10, d0,  d1            @ src[-2] - src[1]
-        vcle.u16        d18, d18, d22
-        vand            d20, d20, d24
-        vneg.s16        d23, d25                @ -lim_p0q0
-        vadd.s16        d19, d19, d20
-        vbic            d16, d18, d16           @ t && u <= 3 - (fp1 & fq1)
-        vtrn.32         d4,  d5                 @ -3,  2, -1,  0
-        vrshr.s16       d19, d19, #3
-        vmov            d28, d29                @ beta
-        vswp            d3,  d6                 @ q1q2, p1p0
-        vmin.s16        d19, d19, d25
-        vand            d30, d30, d16
-        vand            d31, d31, d16
-        vadd.s16        q10, q1,  q3            @ p1p2 + p1p0, q1q2 + q1q0
-        vmax.s16        d19, d19, d23           @ diff
-        vabs.s16        q1,  q1                 @ abs(p1p2), abs(q1q2)
-        vand            d18, d19, d16           @ diff
-        vcle.u16        q1,  q1,  q14
-        vneg.s16        d19, d18                @ -diff
-        vdup.16         d26, r3                 @ lim_p1
-        vaddw.u8        q2,  q9,  d5            @ src[-1]+diff, src[0]-diff
-        vhsub.s16       q11, q10, q9
-        vand            q1,  q1,  q15
-        vqmovun.s16     d4,  q2                 @ -1,  0
-        vand            q9,  q11, q1
-        vdup.16         d27, r2                 @ lim_q1
-        vneg.s16        q9,  q9
-        vneg.s16        q14, q13
-        vmin.s16        q9,  q9,  q13
-        vtrn.32         d0,  d1                 @ -2,  1,  -2,  1
-        vmax.s16        q9,  q9,  q14
-        vaddw.u8        q3,  q9,  d0
-        vqmovun.s16     d5,  q3                 @ -2,  1
-.endm
-
-function ff_rv40_h_weak_loop_filter_neon, export=1
-        sub             r0,  r0,  r1,  lsl #1
-        sub             r0,  r0,  r1
-
-        vld1.32         {d4[]},   [r0,:32], r1
-        vld1.32         {d0[]},   [r0,:32], r1
-        vld1.32         {d4[1]},  [r0,:32], r1
-        vld1.32         {d5[]},   [r0,:32], r1
-        vld1.32         {d1[]},   [r0,:32], r1
-        vld1.32         {d5[0]},  [r0,:32]
-
-        sub             r0,  r0,  r1,  lsl #2
-
-        rv40_weak_loop_filter
-
-        vst1.32         {d5[0]},  [r0,:32], r1
-        vst1.32         {d4[0]},  [r0,:32], r1
-        vst1.32         {d4[1]},  [r0,:32], r1
-        vst1.32         {d5[1]},  [r0,:32], r1
-
-        bx              lr
-endfunc
-
-function ff_rv40_v_weak_loop_filter_neon, export=1
-        sub             r12, r0,  #3
-        sub             r0,  r0,  #2
-
-        vld1.8          {d4},     [r12], r1
-        vld1.8          {d5},     [r12], r1
-        vld1.8          {d2},     [r12], r1
-        vld1.8          {d3},     [r12], r1
-
-        vtrn.16         q2,  q1
-        vtrn.8          d4,  d5
-        vtrn.8          d2,  d3
-
-        vrev64.32       d5,  d5
-        vtrn.32         q2,  q1
-        vdup.32         d0,  d3[0]
-        vdup.32         d1,  d2[0]
-
-        rv40_weak_loop_filter
-
-        vtrn.32         q2,  q3
-        vswp            d4,  d5
-
-        vst4.8          {d4[0],d5[0],d6[0],d7[0]}, [r0], r1
-        vst4.8          {d4[1],d5[1],d6[1],d7[1]}, [r0], r1
-        vst4.8          {d4[2],d5[2],d6[2],d7[2]}, [r0], r1
-        vst4.8          {d4[3],d5[3],d6[3],d7[3]}, [r0], r1
-
         bx              lr
 endfunc

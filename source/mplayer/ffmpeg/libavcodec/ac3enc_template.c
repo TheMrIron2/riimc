@@ -338,7 +338,7 @@ static void compute_rematrixing_strategy(AC3EncodeContext *s)
 {
     int nb_coefs;
     int blk, bnd;
-    AC3Block *block, *block0;
+    AC3Block *block, *av_uninit(block0);
 
     if (s->channel_mode != AC3_CHMODE_STEREO)
         return;
@@ -386,11 +386,11 @@ static void compute_rematrixing_strategy(AC3EncodeContext *s)
 }
 
 
-int AC3_NAME(encode_frame)(AVCodecContext *avctx, AVPacket *avpkt,
-                           const AVFrame *frame, int *got_packet_ptr)
+int AC3_NAME(encode_frame)(AVCodecContext *avctx, unsigned char *frame,
+                           int buf_size, void *data)
 {
     AC3EncodeContext *s = avctx->priv_data;
-    const SampleType *samples = (const SampleType *)frame->data[0];
+    const SampleType *samples = data;
     int ret;
 
     if (s->options.allow_per_frame_metadata) {
@@ -437,13 +437,7 @@ int AC3_NAME(encode_frame)(AVCodecContext *avctx, AVPacket *avpkt,
 
     ff_ac3_quantize_mantissas(s);
 
-    if ((ret = ff_alloc_packet2(avctx, avpkt, s->frame_size)))
-        return ret;
-    ff_ac3_output_frame(s, avpkt->data);
+    ff_ac3_output_frame(s, frame);
 
-    if (frame->pts != AV_NOPTS_VALUE)
-        avpkt->pts = frame->pts - ff_samples_to_time_base(avctx, avctx->delay);
-
-    *got_packet_ptr = 1;
-    return 0;
+    return s->frame_size;
 }

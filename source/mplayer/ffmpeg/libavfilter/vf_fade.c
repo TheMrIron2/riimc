@@ -32,7 +32,6 @@
 #include "avfilter.h"
 #include "drawutils.h"
 #include "internal.h"
-#include "video.h"
 
 #define R 0
 #define G 1
@@ -95,7 +94,6 @@ static av_cold int init(AVFilterContext *ctx, const char *args, void *opaque)
     }
 
     if (expr = av_strtok(args1, ":", &bufptr)) {
-        av_free(fade->type);
         if (!(fade->type = av_strdup(expr))) {
             ret = AVERROR(ENOMEM);
             goto end;
@@ -151,7 +149,7 @@ static av_cold void uninit(AVFilterContext *ctx)
 
 static int query_formats(AVFilterContext *ctx)
 {
-    static const enum PixelFormat pix_fmts[] = {
+    const static enum PixelFormat pix_fmts[] = {
         PIX_FMT_YUV444P,  PIX_FMT_YUV422P,  PIX_FMT_YUV420P,
         PIX_FMT_YUV411P,  PIX_FMT_YUV410P,
         PIX_FMT_YUVJ444P, PIX_FMT_YUVJ422P, PIX_FMT_YUVJ420P,
@@ -280,7 +278,7 @@ static void end_frame(AVFilterLink *inlink)
 
 AVFilter avfilter_vf_fade = {
     .name          = "fade",
-    .description   = NULL_IF_CONFIG_SMALL("Fade in/out input video."),
+    .description   = NULL_IF_CONFIG_SMALL("Fade in/out input video"),
     .init          = init,
     .uninit        = uninit,
     .priv_size     = sizeof(FadeContext),
@@ -289,8 +287,8 @@ AVFilter avfilter_vf_fade = {
     .inputs    = (const AVFilterPad[]) {{ .name      = "default",
                                     .type            = AVMEDIA_TYPE_VIDEO,
                                     .config_props    = config_props,
-                                    .get_video_buffer = ff_null_get_video_buffer,
-                                    .start_frame      = ff_null_start_frame,
+                                    .get_video_buffer = avfilter_null_get_video_buffer,
+                                    .start_frame      = avfilter_null_start_frame,
                                     .draw_slice      = draw_slice,
                                     .end_frame       = end_frame,
                                     .min_perms       = AV_PERM_READ | AV_PERM_WRITE,

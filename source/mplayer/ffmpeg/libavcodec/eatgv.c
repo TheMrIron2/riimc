@@ -29,7 +29,7 @@
  */
 
 #include "avcodec.h"
-#define BITSTREAM_READER_LE
+#define ALT_BITSTREAM_READER_LE
 #include "get_bits.h"
 #include "libavutil/lzo.h"
 #include "libavutil/imgutils.h"
@@ -66,7 +66,7 @@ static av_cold int tgv_decode_init(AVCodecContext *avctx){
  */
 static int unpack(const uint8_t *src, const uint8_t *src_end, unsigned char *dst, int width, int height) {
     unsigned char *dst_end = dst + width*height;
-    int size, size1, size2, offset, run;
+    int size, size1, size2, av_uninit(offset), run;
     unsigned char *dst_start = dst;
 
     if (src[0] & 0x01)
@@ -138,6 +138,7 @@ static int unpack(const uint8_t *src, const uint8_t *src_end, unsigned char *dst
  * @return 0 on success, -1 on critical buffer underflow
  */
 static int tgv_decode_inter(TgvContext * s, const uint8_t *buf, const uint8_t *buf_end){
+    unsigned last_frame_size = s->avctx->height*s->last_frame.linesize[0];
     int num_mvs;
     int num_blocks_raw;
     int num_blocks_packed;
@@ -156,13 +157,7 @@ static int tgv_decode_inter(TgvContext * s, const uint8_t *buf, const uint8_t *b
     vector_bits       = AV_RL16(&buf[6]);
     buf += 12;
 
-    if (vector_bits > MIN_CACHE_BITS || !vector_bits) {
-        av_log(s->avctx, AV_LOG_ERROR,
-               "Invalid value for motion vector bits: %d\n", vector_bits);
-        return AVERROR_INVALIDDATA;
-    }
-
-    /* allocate codebook buffers as necessary */
+    /* allocate codebook buffers as neccessary */
     if (num_mvs > s->num_mvs) {
         s->mv_codebook = av_realloc(s->mv_codebook, num_mvs*2*sizeof(int));
         s->num_mvs = num_mvs;
@@ -212,17 +207,14 @@ static int tgv_decode_inter(TgvContext * s, const uint8_t *buf, const uint8_t *b
         int src_stride;
 
         if (vector < num_mvs) {
-            int mx = x * 4 + s->mv_codebook[vector][0];
-            int my = y * 4 + s->mv_codebook[vector][1];
+            unsigned offset =
+                (y*4 + s->mv_codebook[vector][1])*s->last_frame.linesize[0] +
+                 x*4 + s->mv_codebook[vector][0];
 
-            if (   mx < 0 || mx + 4 > s->avctx->width
-                || my < 0 || my + 4 > s->avctx->height) {
-                av_log(s->avctx, AV_LOG_ERROR, "MV %d %d out of picture\n", mx, my);
-                continue;
-            }
-
-            src = s->last_frame.data[0] + mx + my * s->last_frame.linesize[0];
             src_stride = s->last_frame.linesize[0];
+            if (offset >= last_frame_size - (3*src_stride+3))
+                continue;
+            src = s->last_frame.data[0] + offset;
         }else{
             int offset = vector - num_mvs;
             if (offset<num_blocks_raw)
@@ -301,7 +293,7 @@ static int tgv_decode_frame(AVCodecContext *avctx,
         s->frame.buffer_hints = FF_BUFFER_HINTS_VALID;
         s->frame.linesize[0] = s->width;
 
-        /* allocate additional 12 bytes to accommodate av_memcpy_backptr() OUTBUF_PADDED optimisation */
+        /* allocate additional 12 bytes to accomodate av_memcpy_backptr() OUTBUF_PADDED optimisation */
         s->frame.data[0] = av_malloc(s->width*s->height + 12);
         if (!s->frame.data[0])
             return AVERROR(ENOMEM);
@@ -357,5 +349,5 @@ AVCodec ff_eatgv_decoder = {
     .init           = tgv_decode_init,
     .close          = tgv_decode_end,
     .decode         = tgv_decode_frame,
-    .long_name      = NULL_IF_CONFIG_SMALL("Electronic Arts TGV video"),
+    .long_name = NULL_IF_CONFIG_SMALL("Electronic Arts TGV video"),
 };

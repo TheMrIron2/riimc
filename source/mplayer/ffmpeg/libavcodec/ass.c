@@ -29,7 +29,9 @@ int ff_ass_subtitle_header(AVCodecContext *avctx,
                            int bold, int italic, int underline,
                            int alignment)
 {
-    avctx->subtitle_header = av_asprintf(
+    char header[512];
+
+    snprintf(header, sizeof(header),
              "[Script Info]\r\n"
              "ScriptType: v4.00+\r\n"
              "\r\n"
@@ -42,6 +44,7 @@ int ff_ass_subtitle_header(AVCodecContext *avctx,
              font, font_size, color, color, back_color, back_color,
              -bold, -italic, -underline, alignment);
 
+    avctx->subtitle_header = av_strdup(header);
     if (!avctx->subtitle_header)
         return AVERROR(ENOMEM);
     avctx->subtitle_header_size = strlen(avctx->subtitle_header);
@@ -70,18 +73,15 @@ static int ts_to_string(char *str, int strlen, int ts)
 }
 
 int ff_ass_add_rect(AVSubtitle *sub, const char *dialog,
-                    int ts_start, int duration, int raw)
+                    int ts_start, int ts_end, int raw)
 {
-    int len = 0, dlen;
+    int len = 0, dlen, duration = ts_end - ts_start;
     char s_start[16], s_end[16], header[48] = {0};
     AVSubtitleRect **rects;
 
     if (!raw) {
         ts_to_string(s_start, sizeof(s_start), ts_start);
-        if (duration == -1)
-            snprintf(s_end, sizeof(s_end), "9:59:59.99");
-        else
-            ts_to_string(s_end, sizeof(s_end), ts_start + duration);
+        ts_to_string(s_end,   sizeof(s_end),   ts_end  );
         len = snprintf(header, sizeof(header), "Dialogue: 0,%s,%s,",
                        s_start, s_end);
     }

@@ -31,36 +31,17 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
-#ifdef EPROTONOSUPPORT
-# undef EPROTONOSUPPORT
-#endif
 #define EPROTONOSUPPORT WSAEPROTONOSUPPORT
-#ifdef ETIMEDOUT
-# undef ETIMEDOUT
-#endif
 #define ETIMEDOUT       WSAETIMEDOUT
-#ifdef ECONNREFUSED
-# undef ECONNREFUSED
-#endif
 #define ECONNREFUSED    WSAECONNREFUSED
-#ifdef EINPROGRESS
-# undef EINPROGRESS
-#endif
 #define EINPROGRESS     WSAEINPROGRESS
 
 int ff_neterrno(void);
 #else
-#ifndef GEKKO
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
-#else
-#include <network.h>
-#define INADDR_LOOPBACK    ((unsigned long) 0x7f000001)  /* 127.0.0.1 */
-#define INET_ADDRSTRLEN 16
-#define gethostbyname net_gethostbyname
-#endif
 
 #define ff_neterrno() AVERROR(errno)
 #endif

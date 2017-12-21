@@ -31,8 +31,6 @@
 
 #include "libavutil/audioconvert.h"
 #include "avfilter.h"
-#include "audio.h"
-#include "formats.h"
 
 #define NUMTAPS 64
 
@@ -77,16 +75,15 @@ typedef struct {
 
 static int query_formats(AVFilterContext *ctx)
 {
-    int sample_rates[] = { 44100, -1 };
-
     AVFilterFormats *formats = NULL;
-    AVFilterChannelLayouts *layout = NULL;
-
     avfilter_add_format(&formats, AV_SAMPLE_FMT_S16);
     avfilter_set_common_sample_formats(ctx, formats);
-    ff_add_channel_layout(&layout, AV_CH_LAYOUT_STEREO);
-    ff_set_common_channel_layouts(ctx, layout);
-    ff_set_common_samplerates(ctx, avfilter_make_format_list(sample_rates));
+    formats = NULL;
+    avfilter_add_format(&formats, AV_CH_LAYOUT_STEREO);
+    avfilter_set_common_channel_layouts(ctx, formats);
+    formats = NULL;
+    avfilter_add_format(&formats, AVFILTER_PACKED);
+    avfilter_set_common_packing_formats(ctx, formats);
 
     return 0;
 }
@@ -125,7 +122,7 @@ static void filter_samples(AVFilterLink *inlink, AVFilterBufferRef *insamples)
     AVFilterLink *outlink = inlink->dst->outputs[0];
     int16_t *taps, *endin, *in, *out;
     AVFilterBufferRef *outsamples =
-        ff_get_audio_buffer(inlink, AV_PERM_WRITE,
+        avfilter_get_audio_buffer(inlink, AV_PERM_WRITE,
                                   insamples->audio->nb_samples);
     avfilter_copy_buffer_ref_props(outsamples, insamples);
 
@@ -144,7 +141,7 @@ static void filter_samples(AVFilterLink *inlink, AVFilterBufferRef *insamples)
     // save part of input for next round
     memcpy(taps, endin, NUMTAPS * sizeof(*taps));
 
-    ff_filter_samples(outlink, outsamples);
+    avfilter_filter_samples(outlink, outsamples);
     avfilter_unref_buffer(insamples);
 }
 

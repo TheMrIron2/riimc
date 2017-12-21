@@ -26,7 +26,6 @@
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
 #include "internal.h"
-#include "video.h"
 
 typedef struct {
     /**
@@ -103,10 +102,10 @@ AVFilter avfilter_vf_format = {
 
     .inputs    = (const AVFilterPad[]) {{ .name      = "default",
                                     .type            = AVMEDIA_TYPE_VIDEO,
-                                    .get_video_buffer= ff_null_get_video_buffer,
-                                    .start_frame     = ff_null_start_frame,
-                                    .draw_slice      = ff_null_draw_slice,
-                                    .end_frame       = ff_null_end_frame, },
+                                    .get_video_buffer= avfilter_null_get_video_buffer,
+                                    .start_frame     = avfilter_null_start_frame,
+                                    .draw_slice      = avfilter_null_draw_slice,
+                                    .end_frame       = avfilter_null_end_frame, },
                                   { .name = NULL}},
     .outputs   = (const AVFilterPad[]) {{ .name      = "default",
                                     .type            = AVMEDIA_TYPE_VIDEO },
@@ -133,13 +132,14 @@ AVFilter avfilter_vf_noformat = {
 
     .inputs    = (const AVFilterPad[]) {{ .name      = "default",
                                     .type            = AVMEDIA_TYPE_VIDEO,
-                                    .get_video_buffer= ff_null_get_video_buffer,
-                                    .start_frame     = ff_null_start_frame,
-                                    .draw_slice      = ff_null_draw_slice,
-                                    .end_frame       = ff_null_end_frame, },
+                                    .get_video_buffer= avfilter_null_get_video_buffer,
+                                    .start_frame     = avfilter_null_start_frame,
+                                    .draw_slice      = avfilter_null_draw_slice,
+                                    .end_frame       = avfilter_null_end_frame, },
                                   { .name = NULL}},
     .outputs   = (const AVFilterPad[]) {{ .name      = "default",
                                     .type            = AVMEDIA_TYPE_VIDEO },
                                   { .name = NULL}},
 };
 #endif /* CONFIG_NOFORMAT_FILTER */
+

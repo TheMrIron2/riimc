@@ -23,7 +23,7 @@
  * @file
  * Intel Indeo 2 decoder.
  */
-#define BITSTREAM_READER_LE
+#define ALT_BITSTREAM_READER_LE
 #include "avcodec.h"
 #include "get_bits.h"
 #include "indeo2data.h"
@@ -143,7 +143,7 @@ static int ir2_decode_frame(AVCodecContext *avctx,
     int buf_size = avpkt->size;
     Ir2Context * const s = avctx->priv_data;
     AVFrame *picture = data;
-    AVFrame * const p = &s->picture;
+    AVFrame * const p= (AVFrame*)&s->picture;
     int start;
 
     p->reference = 3;
@@ -163,7 +163,7 @@ static int ir2_decode_frame(AVCodecContext *avctx,
     s->decode_delta = buf[18];
 
     /* decide whether frame uses deltas or not */
-#ifndef BITSTREAM_READER_LE
+#ifndef ALT_BITSTREAM_READER_LE
     for (i = 0; i < buf_size; i++)
         buf[i] = av_reverse[buf[i]];
 #endif
@@ -188,7 +188,7 @@ static int ir2_decode_frame(AVCodecContext *avctx,
                          s->picture.data[1], s->picture.linesize[1], ir2_luma_table);
     }
 
-    *picture   = s->picture;
+    *picture= *(AVFrame*)&s->picture;
     *data_size = sizeof(AVPicture);
 
     return buf_size;
@@ -205,7 +205,7 @@ static av_cold int ir2_decode_init(AVCodecContext *avctx){
 
     ir2_vlc.table = vlc_tables;
     ir2_vlc.table_allocated = 1 << CODE_VLC_BITS;
-#ifdef BITSTREAM_READER_LE
+#ifdef ALT_BITSTREAM_READER_LE
         init_vlc(&ir2_vlc, CODE_VLC_BITS, IR2_CODES,
                  &ir2_codes[0][1], 4, 2,
                  &ir2_codes[0][0], 4, 2, INIT_VLC_USE_NEW_STATIC | INIT_VLC_LE);
@@ -237,5 +237,5 @@ AVCodec ff_indeo2_decoder = {
     .close          = ir2_decode_end,
     .decode         = ir2_decode_frame,
     .capabilities   = CODEC_CAP_DR1,
-    .long_name      = NULL_IF_CONFIG_SMALL("Intel Indeo 2"),
+    .long_name = NULL_IF_CONFIG_SMALL("Intel Indeo 2"),
 };

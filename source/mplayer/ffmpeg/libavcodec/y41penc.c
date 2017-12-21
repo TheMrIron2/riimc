@@ -21,7 +21,6 @@
  */
 
 #include "avcodec.h"
-#include "internal.h"
 
 static av_cold int y41p_encode_init(AVCodecContext *avctx)
 {
@@ -31,7 +30,6 @@ static av_cold int y41p_encode_init(AVCodecContext *avctx)
     }
 
     avctx->coded_frame = avcodec_alloc_frame();
-    avctx->bits_per_coded_sample = 12;
 
     if (!avctx->coded_frame) {
         av_log(avctx, AV_LOG_ERROR, "Could not allocate frame.\n");
@@ -41,20 +39,22 @@ static av_cold int y41p_encode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static int y41p_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
-                             const AVFrame *pic, int *got_packet)
+static int y41p_encode_frame(AVCodecContext *avctx, uint8_t *buf,
+                             int buf_size, void *data)
 {
-    uint8_t *dst;
+    AVFrame *pic = data;
+    uint8_t *dst = buf;
     uint8_t *y, *u, *v;
-    int i, j, ret;
+    int i, j;
 
-    if ((ret = ff_alloc_packet2(avctx, pkt, avctx->width * avctx->height * 1.5)) < 0)
-        return ret;
+    if (buf_size < avctx->width * avctx->height * 1.5) {
+        av_log(avctx, AV_LOG_ERROR, "Out buffer is too small.\n");
+        return AVERROR(ENOMEM);
+    }
 
     avctx->coded_frame->reference = 0;
     avctx->coded_frame->key_frame = 1;
-    avctx->coded_frame->pict_type = AV_PICTURE_TYPE_I;
-    dst = pkt->data;
+    avctx->coded_frame->pict_type = FF_I_TYPE;
 
     for (i = avctx->height - 1; i >= 0; i--) {
         y = &pic->data[0][i * pic->linesize[0]];
@@ -78,9 +78,7 @@ static int y41p_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         }
     }
 
-    pkt->flags |= AV_PKT_FLAG_KEY;
-    *got_packet = 1;
-    return 0;
+    return avctx->width * avctx->height * 1.5;
 }
 
 static av_cold int y41p_encode_close(AVCodecContext *avctx)
@@ -95,7 +93,7 @@ AVCodec ff_y41p_encoder = {
     .type         = AVMEDIA_TYPE_VIDEO,
     .id           = CODEC_ID_Y41P,
     .init         = y41p_encode_init,
-    .encode2      = y41p_encode_frame,
+    .encode       = y41p_encode_frame,
     .close        = y41p_encode_close,
     .pix_fmts     = (const enum PixelFormat[]) { PIX_FMT_YUV411P,
                                                  PIX_FMT_NONE },

@@ -24,7 +24,6 @@
 
 #include "libavcodec/avcodec.h"
 #include "metadata.h"
-#include "internal.h"
 
 /* EBML version supported */
 #define EBML_VERSION 1
@@ -250,6 +249,11 @@ typedef struct CodecTags{
     char str[20];
     enum CodecID id;
 }CodecTags;
+
+typedef struct CodecMime{
+    char str[32];
+    enum CodecID id;
+}CodecMime;
 
 /* max. depth in the EBML tree structure */
 #define EBML_MAX_DEPTH 16

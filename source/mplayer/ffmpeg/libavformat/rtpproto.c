@@ -267,7 +267,7 @@ static int rtp_write(URLContext *h, const uint8_t *buf, int size)
     int ret;
     URLContext *hd;
 
-    if (RTP_PT_IS_RTCP(buf[1])) {
+    if (buf[1] >= RTCP_SR && buf[1] <= RTCP_APP) {
         /* RTCP payload type */
         hd = s->rtcp_hd;
     } else {
@@ -331,5 +331,4 @@ URLProtocol ff_rtp_protocol = {
     .url_close           = rtp_close,
     .url_get_file_handle = rtp_get_file_handle,
     .priv_data_size      = sizeof(RTPContext),
-    .flags               = URL_PROTOCOL_FLAG_NETWORK,
 };

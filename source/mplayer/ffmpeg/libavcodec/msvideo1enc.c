@@ -25,7 +25,6 @@
  */
 
 #include "avcodec.h"
-#include "internal.h"
 #include "bytestream.h"
 #include "libavutil/lfg.h"
 #include "elbg.h"
@@ -63,22 +62,18 @@ enum MSV1Mode{
 
 static const int remap[16] = { 0, 1, 4, 5, 2, 3, 6, 7, 8, 9, 12, 13, 10, 11, 14, 15 };
 
-static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
-                               const AVFrame *pict, int *got_packet)
+static int encode_frame(AVCodecContext *avctx, uint8_t *buf, int buf_size, void *data)
 {
     Msvideo1EncContext * const c = avctx->priv_data;
+    AVFrame *pict = data;
     AVFrame * const p = &c->pic;
     uint16_t *src;
     uint8_t *prevptr;
-    uint8_t *dst, *buf;
+    uint8_t *dst = buf;
     int keyframe = 1;
     int no_skips = 1;
-    int i, j, k, x, y, ret;
+    int i, j, k, x, y;
     int skips = 0;
-
-    if ((ret = ff_alloc_packet2(avctx, pkt, avctx->width*avctx->height*9 + FF_MIN_BUFFER_SIZE)) < 0)
-        return ret;
-    dst= buf= pkt->data;
 
     *p = *pict;
     if(!c->prev)
@@ -248,13 +243,10 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         c->keyint = 0;
     else
         c->keyint++;
-    p->pict_type= keyframe ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_P;
+    p->pict_type= keyframe ? FF_I_TYPE : FF_P_TYPE;
     p->key_frame= keyframe;
-    if (keyframe) pkt->flags |= AV_PKT_FLAG_KEY;
-    pkt->size = dst - buf;
-    *got_packet = 1;
 
-    return 0;
+    return dst - buf;
 }
 
 
@@ -276,7 +268,6 @@ static av_cold int encode_init(AVCodecContext *avctx)
 
     avcodec_get_frame_defaults(&c->pic);
     avctx->coded_frame = (AVFrame*)&c->pic;
-    avctx->bits_per_coded_sample = 16;
 
     c->keyint = avctx->keyint_min;
     av_lfg_init(&c->rnd, 1);
@@ -299,13 +290,13 @@ static av_cold int encode_end(AVCodecContext *avctx)
 }
 
 AVCodec ff_msvideo1_encoder = {
-    .name           = "msvideo1",
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = CODEC_ID_MSVIDEO1,
-    .priv_data_size = sizeof(Msvideo1EncContext),
-    .init           = encode_init,
-    .encode2        = encode_frame,
-    .close          = encode_end,
+    "msvideo1",
+    AVMEDIA_TYPE_VIDEO,
+    CODEC_ID_MSVIDEO1,
+    sizeof(Msvideo1EncContext),
+    encode_init,
+    encode_frame,
+    encode_end,
     .pix_fmts = (const enum PixelFormat[]){PIX_FMT_RGB555, PIX_FMT_NONE},
     .long_name = NULL_IF_CONFIG_SMALL("Microsoft Video-1"),
 };

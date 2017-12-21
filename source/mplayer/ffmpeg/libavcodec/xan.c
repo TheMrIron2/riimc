@@ -35,7 +35,7 @@
 #include "libavutil/intreadwrite.h"
 #include "avcodec.h"
 #include "bytestream.h"
-#define BITSTREAM_READER_LE
+#define ALT_BITSTREAM_READER_LE
 #include "get_bits.h"
 // for av_memcpy_backptr
 #include "libavutil/lzo.h"
@@ -288,7 +288,6 @@ static int xan_wc3_decode_frame(XanContext *s) {
     const unsigned char *size_segment;
     const unsigned char *vector_segment;
     const unsigned char *imagedata_segment;
-    const unsigned char *buf_end = s->buf + s->size;
     int huffman_offset, size_offset, vector_offset, imagedata_offset,
         imagedata_size;
 
@@ -393,10 +392,6 @@ static int xan_wc3_decode_frame(XanContext *s) {
                 imagedata_size -= size;
             }
         } else {
-            if (vector_segment >= buf_end) {
-                av_log(s->avctx, AV_LOG_ERROR, "vector_segment overread\n");
-                return AVERROR_INVALIDDATA;
-            }
             /* run-based motion compensation from last frame */
             motion_x = sign_extend(*vector_segment >> 4,  4);
             motion_y = sign_extend(*vector_segment & 0xF, 4);
@@ -517,10 +512,6 @@ static int xan_decode_frame(AVCodecContext *avctx,
             int i;
             tag  = bytestream_get_le32(&buf);
             size = bytestream_get_be32(&buf);
-            if(size < 0) {
-                av_log(avctx, AV_LOG_ERROR, "Invalid tag size %d\n", size);
-                return AVERROR_INVALIDDATA;
-            }
             size = FFMIN(size, buf_end - buf);
             switch (tag) {
             case PALT_TAG:
@@ -544,7 +535,7 @@ static int xan_decode_frame(AVCodecContext *avctx,
                     int g = gamma_lookup[*buf++];
                     int b = gamma_lookup[*buf++];
 #endif
-                    *tmpptr++ = (0xFFU << 24) | (r << 16) | (g << 8) | b;
+                    *tmpptr++ = (r << 16) | (g << 8) | b;
                 }
                 s->palettes_count++;
                 break;

@@ -95,3 +95,4 @@ AVExtFloat av_dbl2ext(double d){
         ext.exponent[0] |= 0x80;
     return ext;
 }
+

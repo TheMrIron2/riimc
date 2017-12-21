@@ -55,11 +55,11 @@ static int loas_probe(AVProbeData *p)
     if   (first_frames>=3) return AVPROBE_SCORE_MAX/2+1;
     else if(max_frames>100)return AVPROBE_SCORE_MAX/2;
     else if(max_frames>=3) return AVPROBE_SCORE_MAX/4;
-    else if(max_frames>=1) return 1;
     else                   return 0;
 }
 
-static int loas_read_header(AVFormatContext *s)
+static int loas_read_header(AVFormatContext *s,
+                            AVFormatParameters *ap)
 {
     AVStream *st;
 
@@ -68,7 +68,7 @@ static int loas_read_header(AVFormatContext *s)
         return AVERROR(ENOMEM);
 
     st->codec->codec_type = AVMEDIA_TYPE_AUDIO;
-    st->codec->codec_id = s->iformat->raw_codec_id;
+    st->codec->codec_id = s->iformat->value;
     st->need_parsing = AVSTREAM_PARSE_FULL;
 
     //LCM of all possible AAC sample rates
@@ -84,5 +84,5 @@ AVInputFormat ff_loas_demuxer = {
     .read_header    = loas_read_header,
     .read_packet    = ff_raw_read_partial_packet,
     .flags= AVFMT_GENERIC_INDEX,
-    .raw_codec_id = CODEC_ID_AAC_LATM,
+    .value = CODEC_ID_AAC_LATM,
 };

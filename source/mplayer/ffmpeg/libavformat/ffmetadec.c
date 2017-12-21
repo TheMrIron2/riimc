@@ -123,7 +123,7 @@ static int read_tag(uint8_t *line, AVDictionary **m)
     return 0;
 }
 
-static int read_header(AVFormatContext *s)
+static int read_header(AVFormatContext *s, AVFormatParameters *ap)
 {
     AVDictionary **m = &s->metadata;
     uint8_t line[1024];

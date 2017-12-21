@@ -40,7 +40,7 @@ static int xwma_probe(AVProbeData *p)
     return 0;
 }
 
-static int xwma_read_header(AVFormatContext *s)
+static int xwma_read_header(AVFormatContext *s, AVFormatParameters *ap)
 {
     int64_t size, av_uninit(data_size);
     int ret;
@@ -113,17 +113,6 @@ static int xwma_read_header(AVFormatContext *s)
             /* setup extradata with our experimentally obtained value */
             st->codec->extradata[4] = 31;
         }
-    }
-
-    if (!st->codec->channels) {
-        av_log(s, AV_LOG_WARNING, "Invalid channel count: %d\n",
-               st->codec->channels);
-        return AVERROR_INVALIDDATA;
-    }
-    if (!st->codec->bits_per_coded_sample) {
-        av_log(s, AV_LOG_WARNING, "Invalid bits_per_coded_sample: %d\n",
-               st->codec->bits_per_coded_sample);
-        return AVERROR_INVALIDDATA;
     }
 
     /* set the sample rate */

@@ -75,7 +75,6 @@ try to unroll inner for(x=0 ... loop to avoid these damn if(x ... checks
 
 #include "config.h"
 #include "libavutil/avutil.h"
-#include "libavutil/avassert.h"
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -91,7 +90,6 @@ try to unroll inner for(x=0 ... loop to avoid these damn if(x ... checks
 
 unsigned postproc_version(void)
 {
-    av_assert0(LIBPOSTPROC_VERSION_MICRO >= 100);
     return LIBPOSTPROC_VERSION_INT;
 }
 
@@ -150,7 +148,6 @@ static struct PPFilter filters[]=
     {"l5", "lowpass5",              1, 1, 4, LOWPASS5_DEINT_FILTER},
     {"tn", "tmpnoise",              1, 7, 8, TEMP_NOISE_FILTER},
     {"fq", "forcequant",            1, 0, 0, FORCE_QUANT},
-    {"be", "bitexact",              1, 0, 0, BITEXACT},
     {NULL, NULL,0,0,0,0} //End Marker
 };
 
@@ -537,8 +534,9 @@ static av_always_inline void do_a_deblock_C(uint8_t *src, int step, int stride, 
 
 //Note: we have C, MMX, MMX2, 3DNOW version there is no 3DNOW+MMX2 one
 //Plain C versions
-//we always compile C for testing which needs bitexactness
+#if !(HAVE_MMX || HAVE_ALTIVEC) || CONFIG_RUNTIME_CPUDETECT
 #define COMPILE_C
+#endif
 
 #if HAVE_ALTIVEC
 #define COMPILE_ALTIVEC
@@ -623,9 +621,6 @@ static inline void postProcess(const uint8_t src[], int srcStride, uint8_t dst[]
     PPContext *c= (PPContext *)vc;
     PPMode *ppMode= (PPMode *)vm;
     c->ppMode= *ppMode; //FIXME
-
-    if(ppMode->lumMode & BITEXACT)
-        return postProcess_C(src, srcStride, dst, dstStride, width, height, QPs, QPStride, isColor, c);
 
     // Using ifs here as they are faster than function pointers although the
     // difference would not be measurable here but it is much better because
@@ -725,15 +720,6 @@ pp_mode *pp_get_mode_by_name_and_quality(const char *name, int quality)
     static const char optionDelimiters[] = ":";
     struct PPMode *ppMode;
     char *filterToken;
-
-    if (!strcmp(name, "help")) {
-        const char *p;
-        for (p = pp_help; strchr(p, '\n'); p = strchr(p, '\n') + 1) {
-            av_strlcpy(temp, p, FFMIN(sizeof(temp), strchr(p, '\n') - p + 2));
-            av_log(NULL, AV_LOG_INFO, "%s", temp);
-        }
-        return NULL;
-    }
 
     ppMode= av_malloc(sizeof(PPMode));
 
@@ -926,7 +912,7 @@ static void reallocBuffers(PPContext *c, int width, int height, int stride, int 
             c->yHistogram[i]= width*height/64*15/256;
 
     for(i=0; i<3; i++){
-        //Note: The +17*1024 is just there so I do not have to worry about r/w over the end.
+        //Note: The +17*1024 is just there so i do not have to worry about r/w over the end.
         reallocAlign((void **)&c->tempBlurred[i], 8, stride*mbHeight*16 + 17*1024);
         reallocAlign((void **)&c->tempBlurredPast[i], 8, 256*((height+7)&(~7))/2 + 17*1024);//FIXME size
     }

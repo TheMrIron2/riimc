@@ -23,7 +23,7 @@ endif
 ALLFFLIBS = avcodec avdevice avfilter avformat avutil postproc swscale swresample
 
 # NASM requires -I path terminated with /
-IFLAGS     := -I. -I$(SRC_PATH)/ -I../
+IFLAGS     := -I. -I$(SRC_PATH)/
 CPPFLAGS   := $(IFLAGS) $(CPPFLAGS)
 CFLAGS     += $(ECFLAGS)
 CCFLAGS     = $(CFLAGS)
@@ -73,7 +73,7 @@ COMPILE_S = $(call COMPILE,AS)
 $(OBJS):
 endif
 
-include $(SRC_PATH)/arch.mak
+OBJS-$(HAVE_MMX) +=  $(MMX-OBJS-yes)
 
 OBJS      += $(OBJS-yes)
 FFLIBS    := $(FFLIBS-yes) $(FFLIBS)
@@ -115,6 +115,6 @@ OBJDIRS := $(OBJDIRS) $(dir $(OBJS) $(HOSTOBJS) $(TESTOBJS))
 
 CLEANSUFFIXES     = *.d *.o *~ *.ho *.map *.ver *.gcno *.gcda
 DISTCLEANSUFFIXES = *.pc
-LIBSUFFIXES       = *.a *.lib *.so *.so.* *.dylib *.dll *.def *.dll.a
+LIBSUFFIXES       = *.a *.lib *.so *.so.* *.dylib *.dll *.def *.dll.a *.exp
 
 -include $(wildcard $(OBJS:.o=.d) $(TESTOBJS:.o=.d))

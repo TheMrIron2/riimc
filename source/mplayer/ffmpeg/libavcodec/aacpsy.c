@@ -216,7 +216,7 @@ static const float psy_fir_coeffs[] = {
 };
 
 /**
- * Calculate the ABR attack threshold from the above LAME psymodel table.
+ * calculates the attack threshold for ABR from the above table for the LAME psy model
  */
 static float lame_calc_attack_threshold(int bitrate)
 {
@@ -389,8 +389,9 @@ static av_unused FFPsyWindowInfo psy_3gpp_window(FFPsyContext *ctx,
     AacPsyChannel *pch  = &pctx->ch[channel];
     uint8_t grouping     = 0;
     int next_type        = pch->next_window_seq;
-    FFPsyWindowInfo wi  = { { 0 } };
+    FFPsyWindowInfo wi;
 
+    memset(&wi, 0, sizeof(wi));
     if (la) {
         float s[8], v;
         int switch_to_eight = 0;
@@ -399,7 +400,7 @@ static av_unused FFPsyWindowInfo psy_3gpp_window(FFPsyContext *ctx,
         int stay_short = 0;
         for (i = 0; i < 8; i++) {
             for (j = 0; j < 128; j++) {
-                v = iir_filter(la[i*128+j], pch->iir_state);
+                v = iir_filter(la[(i*128+j)*ctx->avctx->channels], pch->iir_state);
                 sum += v*v;
             }
             s[i]  = sum;
@@ -563,7 +564,7 @@ static void psy_3gpp_analyze_channel(FFPsyContext *ctx, int channel,
     AacPsyChannel *pch  = &pctx->ch[channel];
     int start = 0;
     int i, w, g;
-    float desired_bits, desired_pe, delta_pe, reduction= NAN, spread_en[128] = {0};
+    float desired_bits, desired_pe, delta_pe, reduction, spread_en[128] = {0};
     float a = 0.0f, active_lines = 0.0f, norm_fac = 0.0f;
     float pe = pctx->chan_bitrate > 32000 ? 0.0f : FFMAX(50.0f, 100.0f - pctx->chan_bitrate * 100.0f / 32000.0f);
     const int      num_bands   = ctx->num_bands[wi->num_windows == 8];
@@ -775,8 +776,9 @@ static void lame_apply_block_type(AacPsyChannel *ctx, FFPsyWindowInfo *wi, int u
     ctx->next_window_seq = blocktype;
 }
 
-static FFPsyWindowInfo psy_lame_window(FFPsyContext *ctx, const float *audio,
-                                       const float *la, int channel, int prev_type)
+static FFPsyWindowInfo psy_lame_window(FFPsyContext *ctx,
+                                       const int16_t *audio, const int16_t *la,
+                                       int channel, int prev_type)
 {
     AacPsyContext *pctx = (AacPsyContext*) ctx->model_priv_data;
     AacPsyChannel *pch  = &pctx->ch[channel];
@@ -784,28 +786,29 @@ static FFPsyWindowInfo psy_lame_window(FFPsyContext *ctx, const float *audio,
     int uselongblock = 1;
     int attacks[AAC_NUM_BLOCKS_SHORT + 1] = { 0 };
     int i;
-    FFPsyWindowInfo wi = { { 0 } };
+    FFPsyWindowInfo wi;
 
+    memset(&wi, 0, sizeof(wi));
     if (la) {
         float hpfsmpl[AAC_BLOCK_SIZE_LONG];
         float const *pf = hpfsmpl;
         float attack_intensity[(AAC_NUM_BLOCKS_SHORT + 1) * PSY_LAME_NUM_SUBBLOCKS];
         float energy_subshort[(AAC_NUM_BLOCKS_SHORT + 1) * PSY_LAME_NUM_SUBBLOCKS];
         float energy_short[AAC_NUM_BLOCKS_SHORT + 1] = { 0 };
-        const float *firbuf = la + (AAC_BLOCK_SIZE_SHORT/4 - PSY_LAME_FIR_LEN);
+        int chans = ctx->avctx->channels;
+        const int16_t *firbuf = la + (AAC_BLOCK_SIZE_SHORT/4 - PSY_LAME_FIR_LEN) * chans;
         int j, att_sum = 0;
 
         /* LAME comment: apply high pass filter of fs/4 */
         for (i = 0; i < AAC_BLOCK_SIZE_LONG; i++) {
             float sum1, sum2;
-            sum1 = firbuf[i + (PSY_LAME_FIR_LEN - 1) / 2];
+            sum1 = firbuf[(i + ((PSY_LAME_FIR_LEN - 1) / 2)) * chans];
             sum2 = 0.0;
             for (j = 0; j < ((PSY_LAME_FIR_LEN - 1) / 2) - 1; j += 2) {
-                sum1 += psy_fir_coeffs[j] * (firbuf[i + j] + firbuf[i + PSY_LAME_FIR_LEN - j]);
-                sum2 += psy_fir_coeffs[j + 1] * (firbuf[i + j + 1] + firbuf[i + PSY_LAME_FIR_LEN - j - 1]);
+                sum1 += psy_fir_coeffs[j] * (firbuf[(i + j) * chans] + firbuf[(i + PSY_LAME_FIR_LEN - j) * chans]);
+                sum2 += psy_fir_coeffs[j + 1] * (firbuf[(i + j + 1) * chans] + firbuf[(i + PSY_LAME_FIR_LEN - j - 1) * chans]);
             }
-            /* NOTE: The LAME psymodel expects it's input in the range -32768 to 32768. Tuning this for normalized floats would be difficult. */
-            hpfsmpl[i] = (sum1 + sum2) * 32768.0f;
+            hpfsmpl[i] = sum1 + sum2;
         }
 
         /* Calculate the energies of each sub-shortblock */
@@ -820,15 +823,16 @@ static FFPsyWindowInfo psy_lame_window(FFPsyContext *ctx, const float *audio,
             float const *const pfe = pf + AAC_BLOCK_SIZE_LONG / (AAC_NUM_BLOCKS_SHORT * PSY_LAME_NUM_SUBBLOCKS);
             float p = 1.0f;
             for (; pf < pfe; pf++)
-                p = FFMAX(p, fabsf(*pf));
+                if (p < fabsf(*pf))
+                    p = fabsf(*pf);
             pch->prev_energy_subshort[i] = energy_subshort[i + PSY_LAME_NUM_SUBBLOCKS] = p;
             energy_short[1 + i / PSY_LAME_NUM_SUBBLOCKS] += p;
-            /* NOTE: The indexes below are [i + 3 - 2] in the LAME source.
-             *       Obviously the 3 and 2 have some significance, or this would be just [i + 1]
-             *       (which is what we use here). What the 3 stands for is ambiguous, as it is both
-             *       number of short blocks, and the number of sub-short blocks.
-             *       It seems that LAME is comparing each sub-block to sub-block + 1 in the
-             *       previous block.
+            /* FIXME: The indexes below are [i + 3 - 2] in the LAME source.
+             *          Obviously the 3 and 2 have some significance, or this would be just [i + 1]
+             *          (which is what we use here). What the 3 stands for is ambigious, as it is both
+             *          number of short blocks, and the number of sub-short blocks.
+             *          It seems that LAME is comparing each sub-block to sub-block + 1 in the
+             *          previous block.
              */
             if (p > energy_subshort[i + 1])
                 p = p / energy_subshort[i + 1];

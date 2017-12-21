@@ -20,7 +20,7 @@
  */
 #include "avformat.h"
 
-static int daud_header(AVFormatContext *s) {
+static int daud_header(AVFormatContext *s, AVFormatParameters *ap) {
     AVStream *st = avformat_new_stream(s, NULL);
     if (!st)
         return AVERROR(ENOMEM);
@@ -75,7 +75,7 @@ AVInputFormat ff_daud_demuxer = {
     .long_name      = NULL_IF_CONFIG_SMALL("D-Cinema audio format"),
     .read_header    = daud_header,
     .read_packet    = daud_packet,
-    .extensions     = "302,daud",
+    .extensions = "302",
 };
 #endif
 

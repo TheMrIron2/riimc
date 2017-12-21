@@ -26,20 +26,18 @@
 #ifndef AVCODEC_ADPCM_H
 #define AVCODEC_ADPCM_H
 
-#include <stdint.h>
-
 #define BLKSIZE 1024
 
 typedef struct ADPCMChannelStatus {
     int predictor;
-    int16_t step_index;
+    short int step_index;
     int step;
     /* for encoding */
     int prev_sample;
 
     /* MS version */
-    int16_t sample1;
-    int16_t sample2;
+    short sample1;
+    short sample2;
     int coeff1;
     int coeff2;
     int idelta;

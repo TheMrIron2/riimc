@@ -48,13 +48,15 @@
 void ff_mmx_idct(DCTELEM *data);
 void ff_mmxext_idct(DCTELEM *data);
 
+void odivx_idct_c(short *block);
+
 // BFIN
 void ff_bfin_idct(DCTELEM *block);
 void ff_bfin_fdct(DCTELEM *block);
 
 // ALTIVEC
-void ff_fdct_altivec(DCTELEM *block);
-//void ff_idct_altivec(DCTELEM *block);?? no routine
+void fdct_altivec(DCTELEM *block);
+//void idct_altivec(DCTELEM *block);?? no routine
 
 // ARM
 void ff_j_rev_dct_arm(DCTELEM *data);
@@ -74,12 +76,18 @@ struct algo {
     int nonspec;
 };
 
+#ifndef FAAN_POSTSCALE
+#define FAAN_SCALE SCALE_PERM
+#else
+#define FAAN_SCALE NO_PERM
+#endif
+
 static int cpu_flags;
 
 static const struct algo fdct_tab[] = {
     { "REF-DBL",        ff_ref_fdct,           NO_PERM    },
-    { "FAAN",           ff_faandct,            NO_PERM    },
-    { "IJG-AAN-INT",    ff_fdct_ifast,         SCALE_PERM },
+    { "FAAN",           ff_faandct,            FAAN_SCALE },
+    { "IJG-AAN-INT",    fdct_ifast,            SCALE_PERM },
     { "IJG-LLM-INT",    ff_jpeg_fdct_islow_8,  NO_PERM    },
 
 #if HAVE_MMX
@@ -89,7 +97,7 @@ static const struct algo fdct_tab[] = {
 #endif
 
 #if HAVE_ALTIVEC
-    { "altivecfdct",    ff_fdct_altivec,       NO_PERM,   AV_CPU_FLAG_ALTIVEC },
+    { "altivecfdct",    fdct_altivec,          NO_PERM,   AV_CPU_FLAG_ALTIVEC },
 #endif
 
 #if ARCH_BFIN
@@ -99,11 +107,11 @@ static const struct algo fdct_tab[] = {
     { 0 }
 };
 
-#if HAVE_MMX && HAVE_YASM
+#if HAVE_MMX
 void ff_prores_idct_put_10_sse2(uint16_t *dst, int linesize,
                                 DCTELEM *block, int16_t *qmat);
 
-static void ff_prores_idct_put_10_sse2_wrap(DCTELEM *dst){
+static void ff_prores_idct_put_10_sse2_wrap(uint16_t *dst){
     int16_t qmat[64]; int i;
     int16_t tmp[64];
 
@@ -118,7 +126,7 @@ static void ff_prores_idct_put_10_sse2_wrap(DCTELEM *dst){
 static const struct algo idct_tab[] = {
     { "FAANI",          ff_faanidct,           NO_PERM  },
     { "REF-DBL",        ff_ref_idct,           NO_PERM  },
-    { "INT",            ff_j_rev_dct,          MMX_PERM },
+    { "INT",            j_rev_dct,             MMX_PERM },
     { "SIMPLE-C",       ff_simple_idct_8,      NO_PERM  },
 
 #if HAVE_MMX
@@ -130,7 +138,7 @@ static const struct algo idct_tab[] = {
     { "XVID-MMX",       ff_idct_xvid_mmx,      NO_PERM,   AV_CPU_FLAG_MMX,  1 },
     { "XVID-MMX2",      ff_idct_xvid_mmx2,     NO_PERM,   AV_CPU_FLAG_MMX2, 1 },
     { "XVID-SSE2",      ff_idct_xvid_sse2,     SSE2_PERM, AV_CPU_FLAG_SSE2, 1 },
-#if ARCH_X86_64 && HAVE_YASM
+#if ARCH_X86_64
     { "PR-SSE2",        ff_prores_idct_put_10_sse2_wrap,     TRANSPOSE_PERM, AV_CPU_FLAG_SSE2, 1 },
 #endif
 #endif
@@ -161,6 +169,8 @@ static const struct algo idct_tab[] = {
 };
 
 #define AANSCALE_BITS 12
+
+static uint8_t cropTbl[256 + 2 * MAX_NEG_CROP];
 
 static int64_t gettime(void)
 {
@@ -204,7 +214,7 @@ static inline void mmx_emms(void)
 {
 #if HAVE_MMX
     if (cpu_flags & AV_CPU_FLAG_MMX)
-        __asm__ volatile ("emms\n\t" ::: "memory");
+        __asm__ volatile ("emms\n\t");
 #endif
 }
 
@@ -351,10 +361,10 @@ static int dct_error(const struct algo *dct, int test, int is_idct, int speed, c
             memcpy(block, block1, sizeof(block));
             dct->func(block);
         }
-        mmx_emms();
         it1 += NB_ITS_SPEED;
         ti1 = gettime() - ti;
     } while (ti1 < 1000000);
+    mmx_emms();
 
     printf("%s %s: %0.1f kdct/s\n", is_idct ? "IDCT" : "DCT", dct->name,
            (double) it1 * 1000.0 / (double) ti1);
@@ -512,10 +522,10 @@ static void idct248_error(const char *name,
                 block[i] = block1[i];
             idct248_put(img_dest, 8, block);
         }
-        mmx_emms();
         it1 += NB_ITS_SPEED;
         ti1 = gettime() - ti;
     } while (ti1 < 1000000);
+    mmx_emms();
 
     printf("%s %s: %0.1f kdct/s\n", 1 ? "IDCT248" : "DCT248", name,
            (double) it1 * 1000.0 / (double) ti1);
@@ -546,6 +556,13 @@ int main(int argc, char **argv)
 
     ff_ref_dct_init();
     idct_mmx_init();
+
+    for (i = 0; i < 256; i++)
+        cropTbl[i + MAX_NEG_CROP] = i;
+    for (i = 0; i < MAX_NEG_CROP; i++) {
+        cropTbl[i] = 0;
+        cropTbl[i + MAX_NEG_CROP + 256] = 255;
+    }
 
     for (;;) {
         c = getopt(argc, argv, "ih4t");

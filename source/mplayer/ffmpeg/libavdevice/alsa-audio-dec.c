@@ -53,12 +53,14 @@
 #include "avdevice.h"
 #include "alsa-audio.h"
 
-static av_cold int audio_read_header(AVFormatContext *s1)
+static av_cold int audio_read_header(AVFormatContext *s1,
+                                     AVFormatParameters *ap)
 {
     AlsaData *s = s1->priv_data;
     AVStream *st;
     int ret;
     enum CodecID codec_id;
+    double o;
 
     st = avformat_new_stream(s1, NULL);
     if (!st) {
@@ -80,9 +82,9 @@ static av_cold int audio_read_header(AVFormatContext *s1)
     st->codec->sample_rate = s->sample_rate;
     st->codec->channels    = s->channels;
     avpriv_set_pts_info(st, 64, 1, 1000000);  /* 64 bits pts in us */
-    /* microseconds instead of seconds, MHz instead of Hz */
+    o = 2 * M_PI * s->period_size / s->sample_rate * 1.5; // bandwidth: 1.5Hz
     s->timefilter = ff_timefilter_new(1000000.0 / s->sample_rate,
-                                      s->period_size, 1.5E-6);
+                                      sqrt(2 * o), o * o);
     if (!s->timefilter)
         goto fail;
 
@@ -123,8 +125,7 @@ static int audio_read_packet(AVFormatContext *s1, AVPacket *pkt)
     dts = av_gettime();
     snd_pcm_delay(s->h, &delay);
     dts -= av_rescale(delay + res, 1000000, s->sample_rate);
-    pkt->pts = ff_timefilter_update(s->timefilter, dts, s->last_period);
-    s->last_period = res;
+    pkt->pts = ff_timefilter_update(s->timefilter, dts, res);
 
     pkt->size = res * s->frame_size;
 

@@ -232,7 +232,7 @@ static const char *ass_split_section(ASSSplitContext *ctx, const char *buf)
                         break;
                     }
                 (*number)++;
-                buf = skip_space(buf + len + (buf[len] == ','));
+                buf = skip_space(buf + len + 1);
             }
             ctx->field_order[ctx->current_section] = order;
         } else if (section->fields_header) {
@@ -366,7 +366,7 @@ int ff_ass_split_override_codes(const ASSCodesCallbacks *callbacks, void *priv,
     char new_line[2];
     int text_len = 0;
 
-    while (*buf) {
+    while (buf && *buf) {
         if (text && callbacks->text &&
             (sscanf(buf, "\\%1[nN]", new_line) == 1 ||
              !strncmp(buf, "{\\", 2))) {

@@ -187,6 +187,10 @@ static int swf_write_header(AVFormatContext *s)
         AVCodecContext *enc = s->streams[i]->codec;
         if (enc->codec_type == AVMEDIA_TYPE_AUDIO) {
             if (enc->codec_id == CODEC_ID_MP3) {
+                if (!enc->frame_size) {
+                    av_log(s, AV_LOG_ERROR, "audio frame size not set\n");
+                    return -1;
+                }
                 swf->audio_enc = enc;
                 swf->audio_fifo= av_fifo_alloc(AUDIO_FIFO_SIZE);
                 if (!swf->audio_fifo)
@@ -448,7 +452,7 @@ static int swf_write_audio(AVFormatContext *s,
     }
 
     av_fifo_generic_write(swf->audio_fifo, buf, size, NULL);
-    swf->sound_samples += av_get_audio_frame_duration(enc, size);
+    swf->sound_samples += enc->frame_size;
 
     /* if audio only stream make sure we add swf frames */
     if (!swf->video_enc)
@@ -494,8 +498,10 @@ static int swf_write_trailer(AVFormatContext *s)
         avio_wl32(pb, file_size);
         avio_seek(pb, swf->duration_pos, SEEK_SET);
         avio_wl16(pb, swf->video_frame_number);
+        if (swf->vframes_pos) {
         avio_seek(pb, swf->vframes_pos, SEEK_SET);
         avio_wl16(pb, swf->video_frame_number);
+        }
         avio_seek(pb, file_size, SEEK_SET);
     }
     return 0;
@@ -513,7 +519,6 @@ AVOutputFormat ff_swf_muxer = {
     .write_header      = swf_write_header,
     .write_packet      = swf_write_packet,
     .write_trailer     = swf_write_trailer,
-    .flags             = AVFMT_TS_NONSTRICT,
 };
 #endif
 #if CONFIG_AVM2_MUXER
@@ -527,6 +532,5 @@ AVOutputFormat ff_avm2_muxer = {
     .write_header      = swf_write_header,
     .write_packet      = swf_write_packet,
     .write_trailer     = swf_write_trailer,
-    .flags             = AVFMT_TS_NONSTRICT,
 };
 #endif

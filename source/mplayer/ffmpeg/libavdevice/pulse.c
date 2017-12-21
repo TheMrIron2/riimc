@@ -66,7 +66,8 @@ static pa_sample_format_t codec_id_to_pulse_format(int codec_id) {
     }
 }
 
-static av_cold int pulse_read_header(AVFormatContext *s)
+static av_cold int pulse_read_header(AVFormatContext *s,
+                                     AVFormatParameters *ap)
 {
     PulseData *pd = s->priv_data;
     AVStream *st;

@@ -1,5 +1,3 @@
-vcodec=libvpx
-
 g=120
 lag-in-frames=16
 deadline=good

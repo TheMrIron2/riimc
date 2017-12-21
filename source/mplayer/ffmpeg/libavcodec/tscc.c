@@ -58,7 +58,6 @@ typedef struct TsccContext {
     unsigned int decomp_size;
     // Decompression buffer
     unsigned char* decomp_buf;
-    GetByteContext gb;
     int height;
     z_stream zstream;
 
@@ -89,7 +88,7 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *data_size, AVPac
         return -1;
     }
 
-    zret = inflateReset(&c->zstream);
+    zret = inflateReset(&(c->zstream));
     if (zret != Z_OK) {
         av_log(avctx, AV_LOG_ERROR, "Inflate reset error: %d\n", zret);
         return -1;
@@ -98,7 +97,7 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *data_size, AVPac
     c->zstream.avail_in = len;
     c->zstream.next_out = c->decomp_buf;
     c->zstream.avail_out = c->decomp_size;
-    zret = inflate(&c->zstream, Z_FINISH);
+    zret = inflate(&(c->zstream), Z_FINISH);
     // Z_DATA_ERROR means empty picture
     if ((zret != Z_OK) && (zret != Z_STREAM_END) && (zret != Z_DATA_ERROR)) {
         av_log(avctx, AV_LOG_ERROR, "Inflate error: %d\n", zret);
@@ -106,11 +105,8 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *data_size, AVPac
     }
 
 
-    if (zret != Z_DATA_ERROR) {
-        bytestream2_init(&c->gb, c->decomp_buf,
-                         c->decomp_size - c->zstream.avail_out);
-        ff_msrle_decode(avctx, (AVPicture*)&c->pic, c->bpp, &c->gb);
-    }
+    if(zret != Z_DATA_ERROR)
+        ff_msrle_decode(avctx, (AVPicture*)&c->pic, c->bpp, c->decomp_buf, c->decomp_size - c->zstream.avail_out);
 
     /* make the palette available on the way out */
     if (c->avctx->pix_fmt == PIX_FMT_PAL8) {
@@ -148,7 +144,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
 
     avcodec_get_frame_defaults(&c->pic);
     // Needed if zlib unused or init aborted before inflateInit
-    memset(&c->zstream, 0, sizeof(z_stream));
+    memset(&(c->zstream), 0, sizeof(z_stream));
     switch(avctx->bits_per_coded_sample){
     case  8: avctx->pix_fmt = PIX_FMT_PAL8; break;
     case 16: avctx->pix_fmt = PIX_FMT_RGB555; break;
@@ -160,7 +156,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
              return -1;
     }
     c->bpp = avctx->bits_per_coded_sample;
-    // buffer size for RLE 'best' case when 2-byte code precedes each pixel and there may be padding after it too
+    // buffer size for RLE 'best' case when 2-byte code preceeds each pixel and there may be padding after it too
     c->decomp_size = (((avctx->width * c->bpp + 7) >> 3) + 3 * avctx->width + 2) * avctx->height + 2;
 
     /* Allocate decompression buffer */
@@ -174,7 +170,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
     c->zstream.zalloc = Z_NULL;
     c->zstream.zfree = Z_NULL;
     c->zstream.opaque = Z_NULL;
-    zret = inflateInit(&c->zstream);
+    zret = inflateInit(&(c->zstream));
     if (zret != Z_OK) {
         av_log(avctx, AV_LOG_ERROR, "Inflate init error: %d\n", zret);
         return 1;
@@ -198,7 +194,7 @@ static av_cold int decode_end(AVCodecContext *avctx)
 
     if (c->pic.data[0])
         avctx->release_buffer(avctx, &c->pic);
-    inflateEnd(&c->zstream);
+    inflateEnd(&(c->zstream));
 
     return 0;
 }
@@ -214,3 +210,4 @@ AVCodec ff_tscc_decoder = {
     .capabilities   = CODEC_CAP_DR1,
     .long_name      = NULL_IF_CONFIG_SMALL("TechSmith Screen Capture Codec"),
 };
+

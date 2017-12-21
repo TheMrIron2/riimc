@@ -64,9 +64,6 @@
 /* misc math functions */
 extern const uint8_t ff_log2_tab[256];
 
-/**
- * Reverse the order of the bits of an 8-bits unsigned integer.
- */
 extern const uint8_t av_reverse[256];
 
 static av_always_inline av_const int av_log2_c(unsigned int v)
@@ -171,7 +168,7 @@ static av_always_inline av_const int16_t av_clip_int16_c(int a)
 static av_always_inline av_const int32_t av_clipl_int32_c(int64_t a)
 {
     if ((a+0x80000000u) & ~UINT64_C(0xFFFFFFFF)) return (a>>63) ^ 0x7FFFFFFF;
-    else                                         return (int32_t)a;
+    else                                         return a;
 }
 
 /**
@@ -221,16 +218,6 @@ static av_always_inline av_const int av_popcount_c(uint32_t x)
     x = (x + (x >> 4)) & 0x0F0F0F0F;
     x += x >> 8;
     return (x + (x >> 16)) & 0x3F;
-}
-
-/**
- * Count number of bits set to one in x
- * @param x value to count bits of
- * @return the number of bits set to one in x
- */
-static av_always_inline av_const int av_popcount64_c(uint64_t x)
-{
-    return av_popcount((uint32_t)x) + av_popcount(x >> 32);
 }
 
 #define MKTAG(a,b,c,d) ((a) | ((b) << 8) | ((c) << 16) | ((unsigned)(d) << 24))
@@ -397,7 +384,4 @@ static av_always_inline av_const int av_popcount64_c(uint64_t x)
 #endif
 #ifndef av_popcount
 #   define av_popcount      av_popcount_c
-#endif
-#ifndef av_popcount64
-#   define av_popcount64    av_popcount64_c
 #endif

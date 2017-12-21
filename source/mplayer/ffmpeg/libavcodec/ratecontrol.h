@@ -102,3 +102,4 @@ void ff_xvid_rate_control_uninit(struct MpegEncContext *s);
 float ff_xvid_rate_estimate_qscale(struct MpegEncContext *s, int dry_run);
 
 #endif /* AVCODEC_RATECONTROL_H */
+

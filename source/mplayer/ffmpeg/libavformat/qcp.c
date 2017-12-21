@@ -80,7 +80,7 @@ static int qcp_probe(AVProbeData *pd)
     return 0;
 }
 
-static int qcp_read_header(AVFormatContext *s)
+static int qcp_read_header(AVFormatContext *s, AVFormatParameters *ap)
 {
     AVIOContext *pb = s->pb;
     QCPContext    *c  = s->priv_data;

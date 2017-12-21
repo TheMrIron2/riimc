@@ -24,7 +24,6 @@
 
 #include "libavutil/lfg.h"
 #include "avcodec.h"
-#include "bytestream.h"
 #include "dsputil.h"
 
 typedef struct {
@@ -54,7 +53,8 @@ typedef struct RoqContext {
     roq_cell cb2x2[256];
     roq_qcell cb4x4[256];
 
-    GetByteContext gb;
+    const unsigned char *buf;
+    int size;
     int width, height;
 
     /* Encoder only data */
@@ -69,7 +69,7 @@ typedef struct RoqContext {
 
     unsigned int framesSinceKeyframe;
 
-    const AVFrame *frame_to_enc;
+    AVFrame *frame_to_enc;
     uint8_t *out_buf;
     struct RoqTempData *tmpData;
 } RoqContext;

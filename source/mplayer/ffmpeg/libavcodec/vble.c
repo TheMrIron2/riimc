@@ -24,7 +24,7 @@
  * VBLE Decoder
  */
 
-#define BITSTREAM_READER_LE
+#define ALT_BITSTREAM_READER_LE
 
 #include "avcodec.h"
 #include "dsputil.h"
@@ -134,7 +134,7 @@ static int vble_decode_frame(AVCodecContext *avctx, void *data, int *data_size,
 
     /* Set flags */
     pic->key_frame = 1;
-    pic->pict_type = AV_PICTURE_TYPE_I;
+    pic->pict_type = FF_I_TYPE;
 
     /* Version should always be 1 */
     version = AV_RL32(src);
@@ -190,7 +190,7 @@ static av_cold int vble_decode_init(AVCodecContext *avctx)
 
     /* Stash for later use */
     ctx->avctx = avctx;
-    ff_dsputil_init(&ctx->dsp, avctx);
+    dsputil_init(&ctx->dsp, avctx);
 
     avctx->pix_fmt = PIX_FMT_YUV420P;
     avctx->bits_per_raw_sample = 8;

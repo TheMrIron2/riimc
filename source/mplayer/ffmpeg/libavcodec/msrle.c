@@ -1,5 +1,5 @@
 /*
- * Microsoft RLE video decoder
+ * Micrsoft RLE Video Decoder
  * Copyright (C) 2003 the ffmpeg project
  *
  * This file is part of FFmpeg.
@@ -21,7 +21,7 @@
 
 /**
  * @file
- * MS RLE video decoder by Mike Melanson (melanson@pcisys.net)
+ * MS RLE Video Decoder by Mike Melanson (melanson@pcisys.net)
  * For more information about the MS RLE format, visit:
  *   http://www.pcisys.net/~melanson/codecs/
  *
@@ -35,12 +35,12 @@
 #include "avcodec.h"
 #include "dsputil.h"
 #include "msrledec.h"
+#include "libavutil/imgutils.h"
 
 typedef struct MsrleContext {
     AVCodecContext *avctx;
     AVFrame frame;
 
-    GetByteContext gb;
     const unsigned char *buf;
     int size;
 
@@ -108,7 +108,7 @@ static int msrle_decode_frame(AVCodecContext *avctx,
 
     /* FIXME how to correctly detect RLE ??? */
     if (avctx->height * istride == avpkt->size) { /* assume uncompressed */
-        int linesize = (avctx->width * avctx->bits_per_coded_sample + 7) / 8;
+        int linesize = av_image_get_linesize(avctx->pix_fmt, avctx->width, 0);
         uint8_t *ptr = s->frame.data[0];
         uint8_t *buf = avpkt->data + (avctx->height-1)*istride;
         int i, j;
@@ -128,8 +128,7 @@ static int msrle_decode_frame(AVCodecContext *avctx,
             ptr += s->frame.linesize[0];
         }
     } else {
-        bytestream2_init(&s->gb, buf, buf_size);
-        ff_msrle_decode(avctx, (AVPicture*)&s->frame, avctx->bits_per_coded_sample, &s->gb);
+        ff_msrle_decode(avctx, (AVPicture*)&s->frame, avctx->bits_per_coded_sample, buf, buf_size);
     }
 
     *data_size = sizeof(AVFrame);
@@ -159,5 +158,5 @@ AVCodec ff_msrle_decoder = {
     .close          = msrle_decode_end,
     .decode         = msrle_decode_frame,
     .capabilities   = CODEC_CAP_DR1,
-    .long_name      = NULL_IF_CONFIG_SMALL("Microsoft RLE"),
+    .long_name= NULL_IF_CONFIG_SMALL("Microsoft RLE"),
 };

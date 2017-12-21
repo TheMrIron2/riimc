@@ -140,11 +140,11 @@ static int decode_frame(AVCodecContext *avctx,
         case 12:
         case 16:
             if (endian) {
-                avctx->pix_fmt = elements == 4 ? PIX_FMT_RGBA64BE : PIX_FMT_RGB48BE;
+                avctx->pix_fmt = PIX_FMT_RGB48BE;
             } else {
-                avctx->pix_fmt = elements == 4 ? PIX_FMT_RGBA64LE : PIX_FMT_RGB48LE;
+                avctx->pix_fmt = PIX_FMT_RGB48LE;
             }
-            target_packet_size =
+            target_packet_size = 6;
             source_packet_size = elements * 2;
             break;
         default:
@@ -241,5 +241,5 @@ AVCodec ff_dpx_decoder = {
     .init           = decode_init,
     .close          = decode_end,
     .decode         = decode_frame,
-    .long_name      = NULL_IF_CONFIG_SMALL("DPX image"),
+    .long_name = NULL_IF_CONFIG_SMALL("DPX image"),
 };

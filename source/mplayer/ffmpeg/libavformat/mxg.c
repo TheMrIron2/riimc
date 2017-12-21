@@ -37,7 +37,7 @@ typedef struct MXGContext {
     unsigned int cache_size;
 } MXGContext;
 
-static int mxg_read_header(AVFormatContext *s)
+static int mxg_read_header(AVFormatContext *s, AVFormatParameters *ap)
 {
     AVStream *video_st, *audio_st;
     MXGContext *mxg = s->priv_data;
@@ -104,7 +104,7 @@ static int mxg_update_cache(AVFormatContext *s, unsigned int cache_size)
     /* reallocate internal buffer */
     if (current_pos > current_pos + cache_size)
         return AVERROR(ENOMEM);
-    soi_pos = mxg->soi_ptr - mxg->buffer;
+    if (mxg->soi_ptr) soi_pos = mxg->soi_ptr - mxg->buffer;
     mxg->buffer = av_fast_realloc(mxg->buffer, &mxg->buffer_size,
                                   current_pos + cache_size +
                                   FF_INPUT_BUFFER_PADDING_SIZE);
@@ -240,11 +240,11 @@ static int mxg_close(struct AVFormatContext *s)
 }
 
 AVInputFormat ff_mxg_demuxer = {
-    .name           = "mxg",
-    .long_name      = NULL_IF_CONFIG_SMALL("MxPEG clip file format"),
+    .name = "mxg",
+    .long_name = NULL_IF_CONFIG_SMALL("MxPEG clip file format"),
     .priv_data_size = sizeof(MXGContext),
-    .read_header    = mxg_read_header,
-    .read_packet    = mxg_read_packet,
-    .read_close     = mxg_close,
-    .extensions     = "mxg",
+    .read_header = mxg_read_header,
+    .read_packet = mxg_read_packet,
+    .read_close = mxg_close,
+    .extensions = "mxg"
 };

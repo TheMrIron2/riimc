@@ -1,94 +1,11 @@
 Entries are sorted chronologically from oldest to youngest within each release,
 releases are sorted from youngest to oldest.
 
-version next:
-- INI output in ffprobe
-
-
-version 0.11:
-
-- Fixes: CVE-2012-2772, CVE-2012-2774, CVE-2012-2775, CVE-2012-2776, CVE-2012-2777,
-         CVE-2012-2779, CVE-2012-2782, CVE-2012-2783, CVE-2012-2784, CVE-2012-2785,
-         CVE-2012-2786, CVE-2012-2787, CVE-2012-2788, CVE-2012-2789, CVE-2012-2790,
-         CVE-2012-2791, CVE-2012-2792, CVE-2012-2793, CVE-2012-2794, CVE-2012-2795,
-         CVE-2012-2796, CVE-2012-2797, CVE-2012-2798, CVE-2012-2799, CVE-2012-2800,
-         CVE-2012-2801, CVE-2012-2802, CVE-2012-2803, CVE-2012-2804,
-- v408 Quicktime and Microsoft AYUV Uncompressed 4:4:4:4 encoder and decoder
-- setfield filter
-- CDXL demuxer and decoder
-- Apple ProRes encoder
-- ffprobe -count_packets and -count_frames options
-- Sun Rasterfile Encoder
-- ID3v2 attached pictures reading and writing
-- WMA Lossless decoder
-- bluray protocol
-- blackdetect filter
-- libutvideo encoder wrapper (--enable-libutvideo)
-- swapuv filter
-- bbox filter
-- XBM encoder and decoder
-- RealAudio Lossless decoder
-- ZeroCodec decoder
-- tile video filter
-- Metal Gear Solid: The Twin Snakes demuxer
-- OpenEXR image decoder
-- removelogo filter
-- drop support for ffmpeg without libavfilter
-- drawtext video filter: fontconfig support
-- ffmpeg -benchmark_all option
-- super2xsai filter ported from libmpcodecs
-- add libavresample audio conversion library for compatibility
-- MicroDVD decoder
-- Avid Meridien (AVUI) encoder and decoder
-- accept + prefix to -pix_fmt option to disable automatic conversions.
-- complete audio filtering in libavfilter and ffmpeg
-- add fps filter
-- vorbis parser
-- png parser
-- audio mix filter
-
-
-version 0.10:
-
-- Fixes: CVE-2011-3929, CVE-2011-3934, CVE-2011-3935, CVE-2011-3936,
-         CVE-2011-3937, CVE-2011-3940, CVE-2011-3941, CVE-2011-3944,
-         CVE-2011-3945, CVE-2011-3946, CVE-2011-3947, CVE-2011-3949,
-         CVE-2011-3950, CVE-2011-3951, CVE-2011-3952
-- v410 Quicktime Uncompressed 4:4:4 10-bit encoder and decoder
-- SBaGen (SBG) binaural beats script demuxer
-- OpenMG Audio muxer
-- Timecode extraction in DV and MOV
-- thumbnail video filter
-- XML output in ffprobe
-- asplit audio filter
-- tinterlace video filter
-- astreamsync audio filter
-- amerge audio filter
-- ISMV (Smooth Streaming) muxer
-- GSM audio parser
-- SMJPEG muxer
-- XWD encoder and decoder
-- Automatic thread count based on detection number of (available) CPU cores
-- y41p Brooktree Uncompressed 4:1:1 12-bit encoder and decoder
-- ffprobe -show_error option
-- Avid 1:1 10-bit RGB Packer codec
-- v308 Quicktime Uncompressed 4:4:4 encoder and decoder
-- yuv4 libquicktime packed 4:2:0 encoder and decoder
-- ffprobe -show_frames option
-- silencedetect audio filter
-- ffprobe -show_program_version, -show_library_versions, -show_versions options
-- rv34: frame-level multi-threading
-- optimized iMDCT transform on x86 using SSE for for mpegaudiodec
-- Improved PGS subtitle decoder
-- dumpgraph option to lavfi device
-- r210 and r10k encoders
-- ffwavesynth decoder
-- aviocat tool
-- ffeval tool
-
-
 version 0.9:
 
+- Indeo 4 decoder
+- SMJPEG demuxer
+- y41p Brooktree Uncompressed 4:1:1 12-bit encoder and decoder
 - openal input device added
 - boxblur filter added
 - BWF muxer
@@ -211,7 +128,7 @@ easier to use. The changes are:
 - pan audio filter
 - IFF Amiga Continuous Bitmap (ACBM) decoder
 - ass filter
-- CRI ADX audio format muxer and demuxer
+- CRI ADX audio format demuxer
 - Playstation Portable PMP format demuxer
 - Microsoft Windows ICO demuxer
 - life source
@@ -220,12 +137,10 @@ easier to use. The changes are:
 - new option: -report
 - Dxtory capture format decoder
 - cellauto source
-- Simple segmenting muxer
-- Indeo 4 decoder
-- SMJPEG demuxer
-
+- v410 Quicktime Uncompressed 4:4:4 10-bit encoder and decoder
 
 version 0.8:
+
 
 - many many things we forgot because we rather write code than changelogs
 - WebM support in Matroska de/muxer
@@ -790,7 +705,7 @@ version 0.4.5:
 - MPEG-4 vol header fixes (Jonathan Marsden <snmjbm at pacbell.net>)
 - ARM optimizations (Lionel Ulmer <lionel.ulmer at free.fr>).
 - Windows porting of file converter
-- added MJPEG raw format (input/output)
+- added MJPEG raw format (input/ouput)
 - added JPEG image format support (input/output)
 
 

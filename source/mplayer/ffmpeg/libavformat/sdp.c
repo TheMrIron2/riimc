@@ -88,7 +88,7 @@ static void sdp_write_header(char *buff, int size, struct sdp_session_level *s)
 static int resolve_destination(char *dest_addr, int size, char *type,
                                int type_size)
 {
-    struct addrinfo hints = { 0 }, *ai;
+    struct addrinfo hints, *ai;
     int is_multicast;
 
     av_strlcpy(type, "IP4", type_size);
@@ -98,6 +98,7 @@ static int resolve_destination(char *dest_addr, int size, char *type,
     /* Resolve the destination, since it must be written
      * as a numeric IP address in the SDP. */
 
+    memset(&hints, 0, sizeof(hints));
     if (getaddrinfo(dest_addr, NULL, &hints, &ai))
         return 0;
     getnameinfo(ai->ai_addr, ai->ai_addrlen, dest_addr, size,
@@ -155,8 +156,6 @@ static char *extradata2psets(AVCodecContext *c)
     char *psets, *p;
     const uint8_t *r;
     const char *pset_string = "; sprop-parameter-sets=";
-    uint8_t *orig_extradata = NULL;
-    int orig_extradata_size = 0;
 
     if (c->extradata_size > MAX_EXTRADATA_SIZE) {
         av_log(c, AV_LOG_ERROR, "Too much extradata!\n");
@@ -173,15 +172,6 @@ static char *extradata2psets(AVCodecContext *c)
 
             return NULL;
         }
-
-        orig_extradata_size = c->extradata_size;
-        orig_extradata = av_mallocz(orig_extradata_size +
-                                    FF_INPUT_BUFFER_PADDING_SIZE);
-        if (!orig_extradata) {
-            av_bitstream_filter_close(bsfc);
-            return NULL;
-        }
-        memcpy(orig_extradata, c->extradata, orig_extradata_size);
         av_bitstream_filter_filter(bsfc, c, NULL, &dummy_p, &dummy_int, NULL, 0, 0);
         av_bitstream_filter_close(bsfc);
     }
@@ -189,7 +179,6 @@ static char *extradata2psets(AVCodecContext *c)
     psets = av_mallocz(MAX_PSET_SIZE);
     if (psets == NULL) {
         av_log(c, AV_LOG_ERROR, "Cannot allocate memory for the parameter sets.\n");
-        av_free(orig_extradata);
         return NULL;
     }
     memcpy(psets, pset_string, strlen(pset_string));
@@ -218,11 +207,6 @@ static char *extradata2psets(AVCodecContext *c)
         }
         p += strlen(p);
         r = r1;
-    }
-    if (orig_extradata) {
-        av_free(c->extradata);
-        c->extradata      = orig_extradata;
-        c->extradata_size = orig_extradata_size;
     }
 
     return psets;
@@ -403,9 +387,6 @@ static char *sdp_write_media_attributes(char *buff, int size, AVCodecContext *c,
              * actually specifies the maximum video size, but we only know
              * the current size. This is required for playback on Android
              * stagefright and on Samsung bada. */
-            if (!fmt || !fmt->oformat->priv_class ||
-                !av_opt_flag_is_set(fmt->priv_data, "rtpflags", "rfc2190") ||
-                c->codec_id == CODEC_ID_H263P)
             av_strlcatf(buff, size, "a=rtpmap:%d H263-2000/90000\r\n"
                                     "a=framesize:%d %d-%d\r\n",
                                     payload_type,
@@ -580,11 +561,12 @@ void ff_sdp_write_media(char *buff, int size, AVCodecContext *c, const char *des
 int av_sdp_create(AVFormatContext *ac[], int n_files, char *buf, int size)
 {
     AVDictionaryEntry *title = av_dict_get(ac[0]->metadata, "title", NULL, 0);
-    struct sdp_session_level s = { 0 };
+    struct sdp_session_level s;
     int i, j, port, ttl, is_multicast;
     char dst[32], dst_type[5];
 
     memset(buf, 0, size);
+    memset(&s, 0, sizeof(struct sdp_session_level));
     s.user = "-";
     s.src_addr = "127.0.0.1";    /* FIXME: Properly set this */
     s.src_type = "IP4";
@@ -641,5 +623,12 @@ int av_sdp_create(AVFormatContext *ac[], int n_files, char *buf, int size)
 
 void ff_sdp_write_media(char *buff, int size, AVCodecContext *c, const char *dest_addr, const char *dest_type, int port, int ttl, AVFormatContext *fmt)
 {
+}
+#endif
+
+#if FF_API_SDP_CREATE
+int avf_sdp_create(AVFormatContext *ac[], int n_files, char *buff, int size)
+{
+    return av_sdp_create(ac, n_files, buff, size);
 }
 #endif

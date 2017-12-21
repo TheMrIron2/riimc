@@ -79,7 +79,8 @@ static int vmd_probe(AVProbeData *p)
     return AVPROBE_SCORE_MAX / 2;
 }
 
-static int vmd_read_header(AVFormatContext *s)
+static int vmd_read_header(AVFormatContext *s,
+                           AVFormatParameters *ap)
 {
     VmdDemuxContext *vmd = s->priv_data;
     AVIOContext *pb = s->pb;
@@ -206,7 +207,7 @@ static int vmd_read_header(AVFormatContext *s)
                 vmd->frame_table[total_frames].pts = current_audio_pts;
                 total_frames++;
                 if(!current_audio_pts)
-                    current_audio_pts += sound_buffers - 1;
+                    current_audio_pts += sound_buffers;
                 else
                     current_audio_pts++;
                 break;

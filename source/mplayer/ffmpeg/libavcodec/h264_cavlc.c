@@ -282,7 +282,7 @@ static int8_t cavlc_level_tab[7][1<<LEVEL_TAB_BITS][2];
 #define RUN7_VLC_BITS                  6
 
 /**
- * Get the predicted number of non-zero coefficients.
+ * gets the predicted number of non-zero coefficients.
  * @param n block index
  */
 static inline int pred_non_zero_count(H264Context *h, int n){
@@ -437,7 +437,7 @@ static inline int get_level_prefix(GetBitContext *gb){
 }
 
 /**
- * Decode a residual block.
+ * decodes a residual block.
  * @param n block index
  * @param scantable scantable
  * @param max_coeff number of coefficients in the block
@@ -513,7 +513,7 @@ static int decode_residual(H264Context *h, GetBitContext *gb, DCTELEM *block, in
                 else
                     level_code= prefix + get_bits(gb, 4); //part
             }else{
-                level_code= 30;
+                level_code= 30 + get_bits(gb, prefix-3); //part
                 if(prefix>=16){
                     if(prefix > 25+3){
                         av_log(h->s.avctx, AV_LOG_ERROR, "Invalid level prefix\n");
@@ -521,7 +521,6 @@ static int decode_residual(H264Context *h, GetBitContext *gb, DCTELEM *block, in
                     }
                     level_code += (1<<(prefix-3))-4096;
                 }
-                level_code += get_bits(gb, prefix-3); //part
             }
 
             if(trailing_ones < 3) level_code += 2;
@@ -709,7 +708,7 @@ int ff_h264_decode_mb_cavlc(H264Context *h){
                 down the code */
     if(h->slice_type_nos != AV_PICTURE_TYPE_I){
         if(s->mb_skip_run==-1)
-            s->mb_skip_run= get_ue_golomb(&s->gb);
+            s->mb_skip_run= get_ue_golomb_long(&s->gb);
 
         if (s->mb_skip_run--) {
             if(FRAME_MBAFF && (s->mb_y&1) == 0){
@@ -766,8 +765,8 @@ decode_intra_mb:
 
     if(IS_INTRA_PCM(mb_type)){
         unsigned int x;
-        const int mb_size = ff_h264_mb_sizes[h->sps.chroma_format_idc] *
-                            h->sps.bit_depth_luma >> 3;
+        static const uint16_t mb_sizes[4] = {256,384,512,768};
+        const int mb_size = mb_sizes[h->sps.chroma_format_idc]*h->sps.bit_depth_luma >> 3;
 
         // We assume these blocks are very rare so we do not optimize it.
         align_get_bits(&s->gb);
@@ -824,12 +823,12 @@ decode_intra_mb:
             if( ff_h264_check_intra4x4_pred_mode(h) < 0)
                 return -1;
         }else{
-            h->intra16x16_pred_mode= ff_h264_check_intra_pred_mode(h, h->intra16x16_pred_mode, 0);
+            h->intra16x16_pred_mode= ff_h264_check_intra16x16_pred_mode(h, h->intra16x16_pred_mode);
             if(h->intra16x16_pred_mode < 0)
                 return -1;
         }
         if(decode_chroma){
-            pred_mode= ff_h264_check_intra_pred_mode(h, get_ue_golomb_31(&s->gb), 1);
+            pred_mode= ff_h264_check_intra_chroma_pred_mode(h, get_ue_golomb_31(&s->gb));
             if(pred_mode < 0)
                 return -1;
             h->chroma_pred_mode= pred_mode;
@@ -1170,3 +1169,4 @@ decode_intra_mb:
 
     return 0;
 }
+

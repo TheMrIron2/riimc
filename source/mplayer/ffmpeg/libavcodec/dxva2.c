@@ -86,7 +86,7 @@ int ff_dxva2_common_end_frame(AVCodecContext *avctx, MpegEncContext *s,
     struct dxva_context *ctx = avctx->hwaccel_context;
     unsigned               buffer_count = 0;
     DXVA2_DecodeBufferDesc buffer[4];
-    DXVA2_DecodeExecuteParams exec = { 0 };
+    DXVA2_DecodeExecuteParams exec;
     int      result;
 
     if (FAILED(IDirectXVideoDecoder_BeginFrame(ctx->decoder,
@@ -132,6 +132,7 @@ int ff_dxva2_common_end_frame(AVCodecContext *avctx, MpegEncContext *s,
 
     assert(buffer_count == 1 + (qm_size > 0) + 2);
 
+    memset(&exec, 0, sizeof(exec));
     exec.NumCompBuffers      = buffer_count;
     exec.pCompressedBuffers  = buffer;
     exec.pExtensionData      = NULL;
@@ -150,3 +151,4 @@ end:
         ff_draw_horiz_band(s, 0, s->avctx->height);
     return result;
 }
+

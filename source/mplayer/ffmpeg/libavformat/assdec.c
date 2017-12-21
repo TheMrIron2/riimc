@@ -73,7 +73,7 @@ static int event_cmp(uint8_t **a, uint8_t **b)
     return get_pts(*a) - get_pts(*b);
 }
 
-static int read_header(AVFormatContext *s)
+static int read_header(AVFormatContext *s, AVFormatParameters *ap)
 {
     int i, len, header_remaining;
     ASSContext *ass = s->priv_data;

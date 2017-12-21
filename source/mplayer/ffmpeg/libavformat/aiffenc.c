@@ -19,7 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/intfloat.h"
+#include "libavutil/intfloat_readwrite.h"
 #include "avformat.h"
 #include "internal.h"
 #include "aiff.h"
@@ -37,7 +37,7 @@ static int aiff_write_header(AVFormatContext *s)
     AIFFOutputContext *aiff = s->priv_data;
     AVIOContext *pb = s->pb;
     AVCodecContext *enc = s->streams[0]->codec;
-    uint64_t sample_rate;
+    AVExtFloat sample_rate;
     int aifc = 0;
 
     /* First verify if format is ok */
@@ -89,9 +89,8 @@ static int aiff_write_header(AVFormatContext *s)
 
     avio_wb16(pb, enc->bits_per_coded_sample); /* Sample size */
 
-    sample_rate = av_double2int(enc->sample_rate);
-    avio_wb16(pb, (sample_rate >> 52) + (16383 - 1023));
-    avio_wb64(pb, UINT64_C(1) << 63 | sample_rate << 11);
+    sample_rate = av_dbl2ext((double)enc->sample_rate);
+    avio_write(pb, (uint8_t*)&sample_rate, sizeof(sample_rate));
 
     if (aifc) {
         avio_wl32(pb, enc->codec_tag);
@@ -167,5 +166,5 @@ AVOutputFormat ff_aiff_muxer = {
     .write_header      = aiff_write_header,
     .write_packet      = aiff_write_packet,
     .write_trailer     = aiff_write_trailer,
-    .codec_tag         = (const AVCodecTag* const []){ ff_codec_aiff_tags, 0 },
+    .codec_tag= (const AVCodecTag* const []){ff_codec_aiff_tags, 0},
 };

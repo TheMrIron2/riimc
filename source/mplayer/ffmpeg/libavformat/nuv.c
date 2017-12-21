@@ -20,7 +20,7 @@
  */
 
 #include "libavutil/intreadwrite.h"
-#include "libavutil/intfloat.h"
+#include "libavutil/intfloat_readwrite.h"
 #include "avformat.h"
 #include "internal.h"
 #include "riff.h"
@@ -122,7 +122,7 @@ static int get_codec_data(AVIOContext *pb, AVStream *vst,
     return 0;
 }
 
-static int nuv_header(AVFormatContext *s) {
+static int nuv_header(AVFormatContext *s, AVFormatParameters *ap) {
     NUVContext *ctx = s->priv_data;
     AVIOContext *pb = s->pb;
     char id_string[12];
@@ -140,10 +140,10 @@ static int nuv_header(AVFormatContext *s) {
     avio_rl32(pb); // unused, "desiredheight"
     avio_r8(pb); // 'P' == progressive, 'I' == interlaced
     avio_skip(pb, 3); // padding
-    aspect = av_int2double(avio_rl64(pb));
+    aspect = av_int2dbl(avio_rl64(pb));
     if (aspect > 0.9999 && aspect < 1.0001)
         aspect = 4.0 / 3.0;
-    fps = av_int2double(avio_rl64(pb));
+    fps = av_int2dbl(avio_rl64(pb));
 
     // number of packets per stream type, -1 means unknown, e.g. streaming
     v_packs = avio_rl32(pb);
@@ -277,7 +277,7 @@ static int nuv_resync(AVFormatContext *s, int64_t pos_limit) {
 
 /**
  * \brief attempts to read a timestamp from stream at the given stream position
- * \return timestamp if successful and AV_NOPTS_VALUE if failure
+ * \return timestamp if successfull and AV_NOPTS_VALUE if failure
  */
 static int64_t nuv_read_dts(AVFormatContext *s, int stream_index,
                             int64_t *ppos, int64_t pos_limit)
@@ -341,5 +341,5 @@ AVInputFormat ff_nuv_demuxer = {
     .read_header    = nuv_header,
     .read_packet    = nuv_packet,
     .read_timestamp = nuv_read_dts,
-    .flags          = AVFMT_GENERIC_INDEX,
+    .flags = AVFMT_GENERIC_INDEX,
 };

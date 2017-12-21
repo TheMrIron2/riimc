@@ -20,8 +20,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/intreadwrite.h"
 #include "avcodec.h"
+#include "get_bits.h"
 
 static av_cold int v410_decode_init(AVCodecContext *avctx)
 {
@@ -29,7 +29,8 @@ static av_cold int v410_decode_init(AVCodecContext *avctx)
     avctx->bits_per_raw_sample = 10;
 
     if (avctx->width & 1) {
-        av_log(avctx, AV_LOG_WARNING, "v410 requires width to be even.\n");
+        av_log(avctx, AV_LOG_ERROR, "v410 requires width to be even.\n");
+        return AVERROR_INVALIDDATA;
     }
 
     avctx->coded_frame = avcodec_alloc_frame();
@@ -54,7 +55,7 @@ static int v410_decode_frame(AVCodecContext *avctx, void *data,
     if (pic->data[0])
         avctx->release_buffer(avctx, pic);
 
-    if (avpkt->size < 4 * avctx->height * avctx->width) {
+    if (avpkt->size < 4*avctx->height*avctx->width) {
         av_log(avctx, AV_LOG_ERROR, "Insufficient input data.\n");
         return AVERROR(EINVAL);
     }
@@ -67,7 +68,7 @@ static int v410_decode_frame(AVCodecContext *avctx, void *data,
     }
 
     pic->key_frame = 1;
-    pic->pict_type = AV_PICTURE_TYPE_I;
+    pic->pict_type = FF_I_TYPE;
 
     y = (uint16_t *)pic->data[0];
     u = (uint16_t *)pic->data[1];

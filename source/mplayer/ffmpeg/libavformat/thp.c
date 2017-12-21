@@ -20,7 +20,7 @@
  */
 
 #include "libavutil/intreadwrite.h"
-#include "libavutil/intfloat.h"
+#include "libavutil/intfloat_readwrite.h"
 #include "avformat.h"
 #include "internal.h"
 
@@ -54,7 +54,8 @@ static int thp_probe(AVProbeData *p)
         return 0;
 }
 
-static int thp_read_header(AVFormatContext *s)
+static int thp_read_header(AVFormatContext *s,
+                           AVFormatParameters *ap)
 {
     ThpDemuxContext *thp = s->priv_data;
     AVStream *st;
@@ -69,7 +70,7 @@ static int thp_read_header(AVFormatContext *s)
                            avio_rb32(pb); /* Max buf size.  */
                            avio_rb32(pb); /* Max samples.  */
 
-    thp->fps             = av_d2q(av_int2float(avio_rb32(pb)), INT_MAX);
+    thp->fps             = av_d2q(av_int2flt(avio_rb32(pb)), INT_MAX);
     thp->framecnt        = avio_rb32(pb);
     thp->first_framesz   = avio_rb32(pb);
     pb->maxsize          = avio_rb32(pb);
@@ -184,9 +185,6 @@ static int thp_read_packet(AVFormatContext *s,
         }
 
         pkt->stream_index = thp->audio_stream_index;
-        if (thp->audiosize >= 8)
-            pkt->duration = AV_RB32(&pkt->data[4]);
-
         thp->audiosize = 0;
         thp->frame++;
     }

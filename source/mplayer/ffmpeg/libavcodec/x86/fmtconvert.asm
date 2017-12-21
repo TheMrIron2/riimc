@@ -28,14 +28,14 @@ SECTION_TEXT
 ; void int32_to_float_fmul_scalar(float *dst, const int *src, float mul, int len);
 ;---------------------------------------------------------------------------------
 %macro INT32_TO_FLOAT_FMUL_SCALAR 2
-%if UNIX64
+%ifdef UNIX64
 cglobal int32_to_float_fmul_scalar_%1, 3,3,%2, dst, src, len
 %else
 cglobal int32_to_float_fmul_scalar_%1, 4,4,%2, dst, src, mul, len
 %endif
-%if WIN64
+%ifdef WIN64
     SWAP 0, 2
-%elif ARCH_X86_32
+%elifdef ARCH_X86_32
     movss   m0, mulm
 %endif
     SPLATD  m0
@@ -179,8 +179,9 @@ FLOAT_TO_INT16_INTERLEAVE2 sse2
 
 %macro FLOAT_TO_INT16_INTERLEAVE6 1
 ; void float_to_int16_interleave6_sse(int16_t *dst, const float **src, int len)
-cglobal float_to_int16_interleave6_%1, 2,8,0, dst, src, src1, src2, src3, src4, src5, len
-%if ARCH_X86_64
+cglobal float_to_int16_interleave6_%1, 2,7,0, dst, src, src1, src2, src3, src4, src5
+%ifdef ARCH_X86_64
+    %define lend r10d
     mov     lend, r2d
 %else
     %define lend dword r2m
@@ -239,8 +240,9 @@ FLOAT_TO_INT16_INTERLEAVE6 3dn2
 ;-----------------------------------------------------------------------------
 
 %macro FLOAT_INTERLEAVE6 2
-cglobal float_interleave6_%1, 2,8,%2, dst, src, src1, src2, src3, src4, src5, len
-%if ARCH_X86_64
+cglobal float_interleave6_%1, 2,7,%2, dst, src, src1, src2, src3, src4, src5
+%ifdef ARCH_X86_64
+    %define lend r10d
     mov     lend, r2d
 %else
     %define lend dword r2m

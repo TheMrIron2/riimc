@@ -31,43 +31,6 @@
 #include "random_seed.h"
 #include "parseutils.h"
 
-#undef time
-
-#ifdef TEST
-
-#define av_get_random_seed av_get_random_seed_deterministic
-static uint32_t av_get_random_seed_deterministic(void);
-
-#define time(t) 1331972053
-
-#endif
-
-int av_parse_ratio(AVRational *q, const char *str, int max,
-                   int log_offset, void *log_ctx)
-{
-    char c;
-    int ret;
-    int64_t gcd;
-
-    if (sscanf(str, "%d:%d%c", &q->num, &q->den, &c) != 2) {
-        double d;
-        ret = av_expr_parse_and_eval(&d, str, NULL, NULL,
-                                     NULL, NULL, NULL, NULL,
-                                     NULL, log_offset, log_ctx);
-        if (ret < 0)
-            return ret;
-        *q = av_d2q(d, max);
-    }
-
-    gcd = av_gcd(FFABS(q->num), FFABS(q->den));
-    if (gcd) {
-        q->num /= gcd;
-        q->den /= gcd;
-    }
-
-    return 0;
-}
-
 typedef struct {
     const char *abbr;
     int width, height;
@@ -161,6 +124,7 @@ int av_parse_video_rate(AVRational *rate, const char *arg)
 {
     int i, ret;
     int n = FF_ARRAY_ELEMS(video_rate_abbrs);
+    double res;
 
     /* First, we check our abbreviation table */
     for (i = 0; i < n; ++i)
@@ -170,8 +134,10 @@ int av_parse_video_rate(AVRational *rate, const char *arg)
         }
 
     /* Then, we try to parse it as fraction */
-    if ((ret = av_parse_ratio_quiet(rate, arg, 1001000)) < 0)
+    if ((ret = av_expr_parse_and_eval(&res, arg, NULL, NULL, NULL, NULL, NULL, NULL,
+                                      NULL, 0, NULL)) < 0)
         return ret;
+    *rate = av_d2q(res, 1001000);
     if (rate->num <= 0 || rate->den <= 0)
         return AVERROR(EINVAL);
     return 0;
@@ -394,11 +360,7 @@ int av_parse_color(uint8_t *rgba_color, const char *color_string, int slen,
         if (!strncmp(alpha_string, "0x", 2)) {
             alpha = strtoul(alpha_string, &tail, 16);
         } else {
-            double norm_alpha = strtod(alpha_string, &tail);
-            if (norm_alpha < 0.0 || norm_alpha > 1.0)
-                alpha = 256;
-            else
-                alpha = 255 * norm_alpha;
+            alpha = 255 * strtod(alpha_string, &tail);
         }
 
         if (tail == alpha_string || *tail || alpha > 255) {
@@ -530,11 +492,9 @@ time_t av_timegm(struct tm *tm)
 
 int av_parse_time(int64_t *timeval, const char *timestr, int duration)
 {
-    const char *p, *q;
+    const char *p;
     int64_t t;
-    time_t now;
-    struct tm dt = { 0 };
-    int today = 0, negative = 0, microseconds = 0;
+    struct tm dt;
     int i;
     static const char * const date_fmt[] = {
         "%Y-%m-%d",
@@ -544,14 +504,27 @@ int av_parse_time(int64_t *timeval, const char *timestr, int duration)
         "%H:%M:%S",
         "%H%M%S",
     };
+    const char *q;
+    int is_utc, len;
+    char lastch;
+    int negative = 0;
+
+#undef time
+    time_t now = time(0);
+
+    len = strlen(timestr);
+    if (len > 0)
+        lastch = timestr[len - 1];
+    else
+        lastch = '\0';
+    is_utc = (lastch == 'z' || lastch == 'Z');
+
+    memset(&dt, 0, sizeof(dt));
 
     p = timestr;
     q = NULL;
-    *timeval = INT64_MIN;
     if (!duration) {
-        now = time(0);
-
-        if (!av_strcasecmp(timestr, "now")) {
+        if (!av_strncasecmp(timestr, "now", len)) {
             *timeval = (int64_t) now * 1000000;
             return 0;
         }
@@ -559,17 +532,23 @@ int av_parse_time(int64_t *timeval, const char *timestr, int duration)
         /* parse the year-month-day part */
         for (i = 0; i < FF_ARRAY_ELEMS(date_fmt); i++) {
             q = small_strptime(p, date_fmt[i], &dt);
-            if (q)
+            if (q) {
                 break;
+            }
         }
 
         /* if the year-month-day part is missing, then take the
          * current year-month-day time */
         if (!q) {
-            today = 1;
-            q = p;
+            if (is_utc) {
+                dt = *gmtime(&now);
+            } else {
+                dt = *localtime(&now);
+            }
+            dt.tm_hour = dt.tm_min = dt.tm_sec = 0;
+        } else {
+            p = q;
         }
-        p = q;
 
         if (*p == 'T' || *p == 't' || *p == ' ')
             p++;
@@ -577,8 +556,9 @@ int av_parse_time(int64_t *timeval, const char *timestr, int duration)
         /* parse the hour-minute-second part */
         for (i = 0; i < FF_ARRAY_ELEMS(time_fmt); i++) {
             q = small_strptime(p, time_fmt[i], &dt);
-            if (q)
+            if (q) {
                 break;
+            }
         }
     } else {
         /* parse timestr as a duration */
@@ -591,49 +571,46 @@ int av_parse_time(int64_t *timeval, const char *timestr, int duration)
         if (!q) {
             /* parse timestr as S+ */
             dt.tm_sec = strtol(p, (void *)&q, 10);
-            if (q == p) /* the parsing didn't succeed */
+            if (q == p) {
+                /* the parsing didn't succeed */
+                *timeval = INT64_MIN;
                 return AVERROR(EINVAL);
+            }
             dt.tm_min = 0;
             dt.tm_hour = 0;
         }
     }
 
     /* Now we have all the fields that we can get */
-    if (!q)
+    if (!q) {
+        *timeval = INT64_MIN;
         return AVERROR(EINVAL);
-
-    /* parse the .m... part */
-    if (*q == '.') {
-        int n;
-        q++;
-        for (n = 100000; n >= 1; n /= 10, q++) {
-            if (!isdigit(*q))
-                break;
-            microseconds += n * (*q - '0');
-        }
     }
 
     if (duration) {
         t = dt.tm_hour * 3600 + dt.tm_min * 60 + dt.tm_sec;
     } else {
-        int is_utc = *q == 'Z' || *q == 'z';
-        q += is_utc;
-        if (today) { /* fill in today's date */
-            struct tm dt2 = is_utc ? *gmtime(&now) : *localtime(&now);
-            dt2.tm_hour = dt.tm_hour;
-            dt2.tm_min  = dt.tm_min;
-            dt2.tm_sec  = dt.tm_sec;
-            dt = dt2;
+        dt.tm_isdst = -1;       /* unknown */
+        if (is_utc) {
+            t = av_timegm(&dt);
+        } else {
+            t = mktime(&dt);
         }
-        t = is_utc ? av_timegm(&dt) : mktime(&dt);
     }
 
-    /* Check that we are at the end of the string */
-    if (*q)
-        return AVERROR(EINVAL);
-
     t *= 1000000;
-    t += microseconds;
+
+    /* parse the .m... part */
+    if (*q == '.') {
+        int val, n;
+        q++;
+        for (val = 0, n = 100000; n >= 1; n /= 10, q++) {
+            if (!isdigit(*q))
+                break;
+            val += n * (*q - '0');
+        }
+        t += val;
+    }
     *timeval = negative ? -t : t;
     return 0;
 }
@@ -679,13 +656,6 @@ int av_find_info_tag(char *arg, int arg_size, const char *tag1, const char *info
 
 #ifdef TEST
 
-static uint32_t random = MKTAG('L','A','V','U');
-
-static uint32_t av_get_random_seed_deterministic(void)
-{
-    return random = random * 1664525 + 1013904223;
-}
-
 #undef printf
 
 int main(void)
@@ -723,12 +693,10 @@ int main(void)
 
         for (i = 0; i < FF_ARRAY_ELEMS(rates); i++) {
             int ret;
-            char err[1024];
             AVRational q = (AVRational){0, 0};
-            ret = av_parse_video_rate(&q, rates[i]);
-            av_strerror(ret, err, sizeof(err));
-            printf("'%s' -> %d/%d ret:%s\n",
-                   rates[i], q.num, q.den, err);
+            ret = av_parse_video_rate(&q, rates[i]),
+            printf("'%s' -> %d/%d ret:%d\n",
+                   rates[i], q.num, q.den, ret);
         }
     }
 
@@ -780,55 +748,6 @@ int main(void)
         for (i = 0;  i < FF_ARRAY_ELEMS(color_names); i++) {
             if (av_parse_color(rgba, color_names[i], -1, NULL) >= 0)
                 printf("%s -> R(%d) G(%d) B(%d) A(%d)\n", color_names[i], rgba[0], rgba[1], rgba[2], rgba[3]);
-            else
-                printf("%s -> error\n", color_names[i]);
-        }
-    }
-
-    printf("\nTesting av_parse_time()\n");
-    {
-        int i;
-        int64_t tv;
-        time_t tvi;
-        struct tm *tm;
-        static char tzstr[] = "TZ=CET-1";
-        const char *time_string[] = {
-            "now",
-            "12:35:46",
-            "2000-12-20 0:02:47.5z",
-            "2000-12-20T010247.6",
-        };
-        const char *duration_string[] = {
-            "2:34:56.79",
-            "-1:23:45.67",
-            "42.1729",
-            "-1729.42",
-            "12:34",
-        };
-
-        av_log_set_level(AV_LOG_DEBUG);
-        putenv(tzstr);
-        printf("(now is 2012-03-17 09:14:13 +0100, local time is UTC+1)\n");
-        for (i = 0;  i < FF_ARRAY_ELEMS(time_string); i++) {
-            printf("%-24s -> ", time_string[i]);
-            if (av_parse_time(&tv, time_string[i], 0)) {
-                printf("error\n");
-            } else {
-                tvi = tv / 1000000;
-                tm = gmtime(&tvi);
-                printf("%14"PRIi64".%06d = %04d-%02d-%02dT%02d:%02d:%02dZ\n",
-                       tv / 1000000, (int)(tv % 1000000),
-                       tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
-                       tm->tm_hour, tm->tm_min, tm->tm_sec);
-            }
-        }
-        for (i = 0;  i < FF_ARRAY_ELEMS(duration_string); i++) {
-            printf("%-24s -> ", duration_string[i]);
-            if (av_parse_time(&tv, duration_string[i], 1)) {
-                printf("error\n");
-            } else {
-                printf("%+21"PRIi64"\n", tv);
-            }
         }
     }
 

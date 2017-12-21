@@ -22,8 +22,6 @@
 #ifndef AVCODEC_DCAENC_H
 #define AVCODEC_DCAENC_H
 
-#include <stdint.h>
-
 /* This is a scaled version of the response of the reference decoder to
    this vector of subband samples: ( 1.0 0.0 0.0 ... 0.0 )
    */

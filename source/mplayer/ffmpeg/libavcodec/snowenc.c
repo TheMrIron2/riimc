@@ -22,7 +22,6 @@
 #include "libavutil/log.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
-#include "internal.h"
 #include "dsputil.h"
 #include "dwt.h"
 #include "snow.h"
@@ -153,6 +152,7 @@ static void dwt_quantize(SnowContext *s, Plane *p, DWTELEM *buffer, int width, i
 
 #endif /* QUANTIZE2==1 */
 
+#if CONFIG_SNOW_ENCODER
 static av_cold int encode_init(AVCodecContext *avctx)
 {
     SnowContext *s = avctx->priv_data;
@@ -199,7 +199,7 @@ static av_cold int encode_init(AVCodecContext *avctx)
     s->m.me.map       = av_mallocz(ME_MAP_SIZE*sizeof(uint32_t));
     s->m.me.score_map = av_mallocz(ME_MAP_SIZE*sizeof(uint32_t));
     s->m.obmc_scratchpad= av_mallocz(MB_SIZE*MB_SIZE*12*sizeof(uint32_t));
-    ff_h263_encode_init(&s->m); //mv_penalty
+    h263_encode_init(&s->m); //mv_penalty
 
     s->max_ref_frames = FFMAX(FFMIN(avctx->refs, MAX_REF_FRAMES), 1);
 
@@ -218,7 +218,7 @@ static av_cold int encode_init(AVCodecContext *avctx)
 //    case PIX_FMT_YUV444P:
 //    case PIX_FMT_YUV422P:
     case PIX_FMT_YUV420P:
-//     case PIX_FMT_GRAY8:
+    case PIX_FMT_GRAY8:
 //    case PIX_FMT_YUV411P:
 //    case PIX_FMT_YUV410P:
         s->colorspace_type= 0;
@@ -247,8 +247,6 @@ static av_cold int encode_init(AVCodecContext *avctx)
             s->ref_scores[i]= av_mallocz(size*sizeof(uint32_t));
         }
     }
-
-    s->runs = av_malloc(avctx->width * avctx->height * sizeof(*s->runs));
 
     return 0;
 }
@@ -577,7 +575,7 @@ static int get_dc(SnowContext *s, int mb_x, int mb_y, int plane_index){
     Plane *p= &s->plane[plane_index];
     const int block_size = MB_SIZE >> s->block_max_depth;
     const int block_w    = plane_index ? block_size/2 : block_size;
-    const uint8_t *obmc  = plane_index ? ff_obmc_tab[s->block_max_depth+1] : ff_obmc_tab[s->block_max_depth];
+    const uint8_t *obmc  = plane_index ? obmc_tab[s->block_max_depth+1] : obmc_tab[s->block_max_depth];
     const int obmc_stride= plane_index ? block_size : 2*block_size;
     const int ref_stride= s->current_picture.linesize[plane_index];
     uint8_t *src= s-> input_picture.data[plane_index];
@@ -768,7 +766,7 @@ static int get_4block_rd(SnowContext *s, int mb_x, int mb_y, int plane_index){
     Plane *p= &s->plane[plane_index];
     const int block_size = MB_SIZE >> s->block_max_depth;
     const int block_w    = plane_index ? block_size/2 : block_size;
-    const uint8_t *obmc  = plane_index ? ff_obmc_tab[s->block_max_depth+1] : ff_obmc_tab[s->block_max_depth];
+    const uint8_t *obmc  = plane_index ? obmc_tab[s->block_max_depth+1] : obmc_tab[s->block_max_depth];
     const int obmc_stride= plane_index ? block_size : 2*block_size;
     const int ref_stride= s->current_picture.linesize[plane_index];
     uint8_t *dst= s->current_picture.data[plane_index];
@@ -829,13 +827,14 @@ static int get_4block_rd(SnowContext *s, int mb_x, int mb_y, int plane_index){
     return distortion + rate*penalty_factor;
 }
 
-static int encode_subband_c0run(SnowContext *s, SubBand *b, const IDWTELEM *src, const IDWTELEM *parent, int stride, int orientation){
+static int encode_subband_c0run(SnowContext *s, SubBand *b, IDWTELEM *src, IDWTELEM *parent, int stride, int orientation){
     const int w= b->width;
     const int h= b->height;
     int x, y;
 
     if(1){
         int run=0;
+        int runs[w*h];
         int run_index=0;
         int max_index;
 
@@ -869,7 +868,7 @@ static int encode_subband_c0run(SnowContext *s, SubBand *b, const IDWTELEM *src,
                 }
                 if(!(/*ll|*/l|lt|t|rt|p)){
                     if(v){
-                        s->runs[run_index++]= run;
+                        runs[run_index++]= run;
                         run=0;
                     }else{
                         run++;
@@ -878,9 +877,9 @@ static int encode_subband_c0run(SnowContext *s, SubBand *b, const IDWTELEM *src,
             }
         }
         max_index= run_index;
-        s->runs[run_index++]= run;
+        runs[run_index++]= run;
         run_index=0;
-        run= s->runs[run_index++];
+        run= runs[run_index++];
 
         put_symbol2(&s->c, b->state[30], max_index, 0);
         if(run_index <= max_index)
@@ -924,7 +923,7 @@ static int encode_subband_c0run(SnowContext *s, SubBand *b, const IDWTELEM *src,
                     put_rac(&s->c, &b->state[0][context], !!v);
                 }else{
                     if(!run){
-                        run= s->runs[run_index++];
+                        run= runs[run_index++];
 
                         if(run_index <= max_index)
                             put_symbol2(&s->c, b->state[1], run, 3);
@@ -940,7 +939,7 @@ static int encode_subband_c0run(SnowContext *s, SubBand *b, const IDWTELEM *src,
                     int t2= 2*FFABS(t) + (t<0);
 
                     put_symbol2(&s->c, b->state[context + 2], FFABS(v)-1, context-4);
-                    put_rac(&s->c, &b->state[0][16 + 1 + 3 + ff_quant3bA[l2&0xFF] + 3*ff_quant3bA[t2&0xFF]], v<0);
+                    put_rac(&s->c, &b->state[0][16 + 1 + 3 + quant3bA[l2&0xFF] + 3*quant3bA[t2&0xFF]], v<0);
                 }
             }
         }
@@ -948,7 +947,7 @@ static int encode_subband_c0run(SnowContext *s, SubBand *b, const IDWTELEM *src,
     return 0;
 }
 
-static int encode_subband(SnowContext *s, SubBand *b, const IDWTELEM *src, const IDWTELEM *parent, int stride, int orientation){
+static int encode_subband(SnowContext *s, SubBand *b, IDWTELEM *src, IDWTELEM *parent, int stride, int orientation){
 //    encode_subband_qtree(s, b, src, parent, stride, orientation);
 //    encode_subband_z0run(s, b, src, parent, stride, orientation);
     return encode_subband_c0run(s, b, src, parent, stride, orientation);
@@ -1091,7 +1090,7 @@ static void iterative_me(SnowContext *s){
                 //FIXME precalculate
                 {
                     int x, y;
-                    memcpy(obmc_edged, ff_obmc_tab[s->block_max_depth], b_w*b_w*4);
+                    memcpy(obmc_edged, obmc_tab[s->block_max_depth], b_w*b_w*4);
                     if(mb_x==0)
                         for(y=0; y<b_w*2; y++)
                             memset(obmc_edged[y], obmc_edged[y][0] + obmc_edged[y][b_w-1], b_w);
@@ -1287,7 +1286,7 @@ static void quantize(SnowContext *s, SubBand *b, IDWTELEM *dst, DWTELEM *src, in
     const int w= b->width;
     const int h= b->height;
     const int qlog= av_clip(s->qlog + b->qlog, 0, QROOT*16);
-    const int qmul= ff_qexp[qlog&(QROOT-1)]<<((qlog>>QSHIFT) + ENCODER_EXTRA_BITS);
+    const int qmul= qexp[qlog&(QROOT-1)]<<((qlog>>QSHIFT) + ENCODER_EXTRA_BITS);
     int x,y, thres1, thres2;
 
     if(s->qlog == LOSSLESS_QLOG){
@@ -1348,7 +1347,7 @@ static void dequantize(SnowContext *s, SubBand *b, IDWTELEM *src, int stride){
     const int w= b->width;
     const int h= b->height;
     const int qlog= av_clip(s->qlog + b->qlog, 0, QROOT*16);
-    const int qmul= ff_qexp[qlog&(QROOT-1)]<<(qlog>>QSHIFT);
+    const int qmul= qexp[qlog&(QROOT-1)]<<(qlog>>QSHIFT);
     const int qadd= (s->qbias*qmul)>>QBIAS_SHIFT;
     int x,y;
 
@@ -1539,7 +1538,7 @@ static int ratecontrol_1pass(SnowContext *s, AVFrame *pict)
             const int h= b->height;
             const int stride= b->stride;
             const int qlog= av_clip(2*QROOT + b->qlog, 0, QROOT*16);
-            const int qmul= ff_qexp[qlog&(QROOT-1)]<<(qlog>>QSHIFT);
+            const int qmul= qexp[qlog&(QROOT-1)]<<(qlog>>QSHIFT);
             const int qdiv= (1<<16)/qmul;
             int x, y;
             //FIXME this is ugly
@@ -1601,22 +1600,17 @@ static void calculate_visual_weight(SnowContext *s, Plane *p){
     }
 }
 
-static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
-                        const AVFrame *pict, int *got_packet)
-{
+static int encode_frame(AVCodecContext *avctx, unsigned char *buf, int buf_size, void *data){
     SnowContext *s = avctx->priv_data;
     RangeCoder * const c= &s->c;
-    AVFrame *pic = &s->new_picture;
+    AVFrame *pict = data;
     const int width= s->avctx->width;
     const int height= s->avctx->height;
-    int level, orientation, plane_index, i, y, ret;
+    int level, orientation, plane_index, i, y;
     uint8_t rc_header_bak[sizeof(s->header_state)];
     uint8_t rc_block_bak[sizeof(s->block_state)];
 
-    if ((ret = ff_alloc_packet2(avctx, pkt, s->b_width*s->b_height*MB_SIZE*MB_SIZE*3 + FF_MIN_BUFFER_SIZE)) < 0)
-        return ret;
-
-    ff_init_range_encoder(c, pkt->data, pkt->size);
+    ff_init_range_encoder(c, buf, buf_size);
     ff_build_rac_states(c, 0.05*(1LL<<32), 256-8);
 
     for(i=0; i<3; i++){
@@ -1630,25 +1624,27 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
     s->m.picture_number= avctx->frame_number;
     if(avctx->flags&CODEC_FLAG_PASS2){
-        s->m.pict_type = pic->pict_type = s->m.rc_context.entry[avctx->frame_number].new_pict_type;
-        s->keyframe = pic->pict_type == AV_PICTURE_TYPE_I;
+        s->m.pict_type =
+        pict->pict_type= s->m.rc_context.entry[avctx->frame_number].new_pict_type;
+        s->keyframe= pict->pict_type==AV_PICTURE_TYPE_I;
         if(!(avctx->flags&CODEC_FLAG_QSCALE)) {
-            pic->quality = ff_rate_estimate_qscale(&s->m, 0);
-            if (pic->quality < 0)
+            pict->quality= ff_rate_estimate_qscale(&s->m, 0);
+            if (pict->quality < 0)
                 return -1;
         }
     }else{
         s->keyframe= avctx->gop_size==0 || avctx->frame_number % avctx->gop_size == 0;
-        s->m.pict_type = pic->pict_type = s->keyframe ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_P;
+        s->m.pict_type=
+        pict->pict_type= s->keyframe ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_P;
     }
 
     if(s->pass1_rc && avctx->frame_number == 0)
-        pic->quality = 2*FF_QP2LAMBDA;
-    if (pic->quality) {
-        s->qlog   = qscale2qlog(pic->quality);
-        s->lambda = pic->quality * 3/2;
+        pict->quality= 2*FF_QP2LAMBDA;
+    if(pict->quality){
+        s->qlog= qscale2qlog(pict->quality);
+        s->lambda = pict->quality * 3/2;
     }
-    if (s->qlog < 0 || (!pic->quality && (avctx->flags & CODEC_FLAG_QSCALE))) {
+    if(s->qlog < 0 || (!pict->quality && (avctx->flags & CODEC_FLAG_QSCALE))){
         s->qlog= LOSSLESS_QLOG;
         s->lambda = 0;
     }//else keep previous frame's qlog until after motion estimation
@@ -1658,7 +1654,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     s->m.current_picture_ptr= &s->m.current_picture;
     s->m.last_picture.f.pts = s->m.current_picture.f.pts;
     s->m.current_picture.f.pts = pict->pts;
-    if(pic->pict_type == AV_PICTURE_TYPE_P){
+    if(pict->pict_type == AV_PICTURE_TYPE_P){
         int block_width = (width +15)>>4;
         int block_height= (height+15)>>4;
         int stride= s->current_picture.linesize[0];
@@ -1683,7 +1679,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         s->m.mb_stride=   s->m.mb_width+1;
         s->m.b8_stride= 2*s->m.mb_width+1;
         s->m.f_code=1;
-        s->m.pict_type = pic->pict_type;
+        s->m.pict_type= pict->pict_type;
         s->m.me_method= s->avctx->me_method;
         s->m.me.scene_change_score=0;
         s->m.flags= s->avctx->flags;
@@ -1707,17 +1703,13 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
 redo_frame:
 
-    if (pic->pict_type == AV_PICTURE_TYPE_I)
+    if(pict->pict_type == AV_PICTURE_TYPE_I)
         s->spatial_decomposition_count= 5;
     else
         s->spatial_decomposition_count= 5;
 
-    while(   !(width >>(s->chroma_h_shift + s->spatial_decomposition_count))
-          || !(height>>(s->chroma_v_shift + s->spatial_decomposition_count)))
-        s->spatial_decomposition_count--;
-
-    s->m.pict_type = pic->pict_type;
-    s->qbias = pic->pict_type == AV_PICTURE_TYPE_P ? 2 : 0;
+    s->m.pict_type = pict->pict_type;
+    s->qbias= pict->pict_type == AV_PICTURE_TYPE_P ? 2 : 0;
 
     ff_snow_common_init_after_header(avctx);
 
@@ -1750,12 +1742,12 @@ redo_frame:
             predict_plane(s, s->spatial_idwt_buffer, plane_index, 0);
 
             if(   plane_index==0
-               && pic->pict_type == AV_PICTURE_TYPE_P
+               && pict->pict_type == AV_PICTURE_TYPE_P
                && !(avctx->flags&CODEC_FLAG_PASS2)
                && s->m.me.scene_change_score > s->avctx->scenechange_threshold){
-                ff_init_range_encoder(c, pkt->data, pkt->size);
+                ff_init_range_encoder(c, buf, buf_size);
                 ff_build_rac_states(c, 0.05*(1LL<<32), 256-8);
-                pic->pict_type= AV_PICTURE_TYPE_I;
+                pict->pict_type= AV_PICTURE_TYPE_I;
                 s->keyframe=1;
                 s->current_picture.key_frame=1;
                 goto redo_frame;
@@ -1781,12 +1773,12 @@ redo_frame:
                 ff_spatial_dwt(s->spatial_dwt_buffer, w, h, w, s->spatial_decomposition_type, s->spatial_decomposition_count);
 
             if(s->pass1_rc && plane_index==0){
-                int delta_qlog = ratecontrol_1pass(s, pic);
+                int delta_qlog = ratecontrol_1pass(s, pict);
                 if (delta_qlog <= INT_MIN)
                     return -1;
                 if(delta_qlog){
                     //reordering qlog in the bitstream would eliminate this reset
-                    ff_init_range_encoder(c, pkt->data, pkt->size);
+                    ff_init_range_encoder(c, buf, buf_size);
                     memcpy(s->header_state, rc_header_bak, sizeof(s->header_state));
                     memcpy(s->block_state, rc_block_bak, sizeof(s->block_state));
                     encode_header(s);
@@ -1801,8 +1793,7 @@ redo_frame:
                     if(!QUANTIZE2)
                         quantize(s, b, b->ibuf, b->buf, b->stride, s->qbias);
                     if(orientation==0)
-                        decorrelate(s, b, b->ibuf, b->stride, pic->pict_type == AV_PICTURE_TYPE_P, 0);
-                    if (!s->no_bitstream)
+                        decorrelate(s, b, b->ibuf, b->stride, pict->pict_type == AV_PICTURE_TYPE_P, 0);
                     encode_subband(s, b, b->ibuf, b->parent ? b->parent->ibuf : NULL, b->stride, orientation);
                     assert(b->parent==NULL || b->parent->stride == b->stride*2);
                     if(orientation==0)
@@ -1829,7 +1820,7 @@ redo_frame:
             predict_plane(s, s->spatial_idwt_buffer, plane_index, 1);
         }else{
             //ME/MC only
-            if(pic->pict_type == AV_PICTURE_TYPE_I){
+            if(pict->pict_type == AV_PICTURE_TYPE_I){
                 for(y=0; y<h; y++){
                     for(x=0; x<w; x++){
                         s->current_picture.data[plane_index][y*s->current_picture.linesize[plane_index] + x]=
@@ -1868,7 +1859,7 @@ redo_frame:
     s->m.p_tex_bits = s->m.frame_bits - s->m.misc_bits - s->m.mv_bits;
     s->m.current_picture.f.display_picture_number =
     s->m.current_picture.f.coded_picture_number   = avctx->frame_number;
-    s->m.current_picture.f.quality                = pic->quality;
+    s->m.current_picture.f.quality                = pict->quality;
     s->m.total_bits += 8*(s->c.bytestream - s->c.bytestream_start);
     if(s->pass1_rc)
         if (ff_rate_estimate_qscale(&s->m, 0) < 0)
@@ -1883,12 +1874,7 @@ redo_frame:
 
     emms_c();
 
-    pkt->size = ff_rac_terminate(c);
-    if (avctx->coded_frame->key_frame)
-        pkt->flags |= AV_PKT_FLAG_KEY;
-    *got_packet = 1;
-
-    return 0;
+    return ff_rac_terminate(c);
 }
 
 static av_cold int encode_end(AVCodecContext *avctx)
@@ -1899,7 +1885,6 @@ static av_cold int encode_end(AVCodecContext *avctx)
     if (s->input_picture.data[0])
         avctx->release_buffer(avctx, &s->input_picture);
     av_free(avctx->stats_out);
-    av_freep(&s->runs);
 
     return 0;
 }
@@ -1908,7 +1893,6 @@ static av_cold int encode_end(AVCodecContext *avctx)
 #define VE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
 static const AVOption options[] = {
     { "memc_only",      "Only do ME/MC (I frames -> ref, P frame -> ME+MC).",   OFFSET(memc_only), AV_OPT_TYPE_INT, { 0 }, 0, 1, VE },
-    { "no_bitstream",   "Skip final bitstream writeout.",                    OFFSET(no_bitstream), AV_OPT_TYPE_INT, { 0 }, 0, 1, VE },
     { NULL },
 };
 
@@ -1925,11 +1909,12 @@ AVCodec ff_snow_encoder = {
     .id             = CODEC_ID_SNOW,
     .priv_data_size = sizeof(SnowContext),
     .init           = encode_init,
-    .encode2        = encode_frame,
+    .encode         = encode_frame,
     .close          = encode_end,
-    .long_name      = NULL_IF_CONFIG_SMALL("Snow"),
+    .long_name = NULL_IF_CONFIG_SMALL("Snow"),
     .priv_class     = &snowenc_class,
 };
+#endif
 
 
 #ifdef TEST
@@ -1957,7 +1942,7 @@ int main(void){
         buffer[0][i] = buffer[1][i] = av_lfg_get(&prng) % 54321 - 12345;
 
     ff_spatial_dwt(buffer[0], width, height, width, s.spatial_decomposition_type, s.spatial_decomposition_count);
-    ff_spatial_idwt((IDWTELEM*)buffer[0], width, height, width, s.spatial_decomposition_type, s.spatial_decomposition_count);
+    ff_spatial_idwt(buffer[0], width, height, width, s.spatial_decomposition_type, s.spatial_decomposition_count);
 
     for(i=0; i<width*height; i++)
         if(buffer[0][i]!= buffer[1][i]) printf("fsck: %6d %12d %7d\n",i, buffer[0][i], buffer[1][i]);
@@ -1968,7 +1953,7 @@ int main(void){
         buffer[0][i] = buffer[1][i] = av_lfg_get(&prng) % 54321 - 12345;
 
     ff_spatial_dwt(buffer[0], width, height, width, s.spatial_decomposition_type, s.spatial_decomposition_count);
-    ff_spatial_idwt((IDWTELEM*)buffer[0], width, height, width, s.spatial_decomposition_type, s.spatial_decomposition_count);
+    ff_spatial_idwt(buffer[0], width, height, width, s.spatial_decomposition_type, s.spatial_decomposition_count);
 
     for(i=0; i<width*height; i++)
         if(FFABS(buffer[0][i] - buffer[1][i])>20) printf("fsck: %6d %12d %7d\n",i, buffer[0][i], buffer[1][i]);
@@ -1994,7 +1979,7 @@ int main(void){
 
                 memset(buffer[0], 0, sizeof(int)*width*height);
                 buf[w/2 + h/2*stride]= 256*256;
-                ff_spatial_idwt((IDWTELEM*)buffer[0], width, height, width, s.spatial_decomposition_type, s.spatial_decomposition_count);
+                ff_spatial_idwt(buffer[0], width, height, width, s.spatial_decomposition_type, s.spatial_decomposition_count);
                 for(y=0; y<height; y++){
                     for(x=0; x<width; x++){
                         int64_t d= buffer[0][x + y*width];

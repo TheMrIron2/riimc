@@ -14,13 +14,12 @@
 @section API
 @itemize @bullet
 @item libavcodec is the library containing the codecs (both encoding and
-decoding). Look at @file{doc/examples/decoding_encoding.c} to see how to use
-it.
+decoding). Look at @file{libavcodec/apiexample.c} to see how to use it.
 
 @item libavformat is the library containing the file format handling (mux and
 demux code for several formats). Look at @file{ffplay.c} to use it in a
-player. See @file{doc/examples/muxing.c} to use it to generate audio or video
-streams.
+player. See @file{libavformat/output-example.c} to use it to generate
+audio or video streams.
 
 @end itemize
 
@@ -188,8 +187,6 @@ the following snippet into your @file{.vimrc}:
 set expandtab
 set shiftwidth=4
 set softtabstop=4
-set cindent
-set cinoptions=(0
 " allow tabs in Makefiles
 autocmd FileType make set noexpandtab shiftwidth=8 softtabstop=8
 " Trailing whitespace and tabs are forbidden, so highlight them.
@@ -201,16 +198,10 @@ autocmd InsertEnter * match ForbiddenWhitespace /\t\|\s\+\%#\@@<!$/
 
 For Emacs, add these roughly equivalent lines to your @file{.emacs.d/init.el}:
 @example
-(c-add-style "ffmpeg"
-             '("k&r"
-               (c-basic-offset . 4)
-               (indent-tabs-mode nil)
-               (show-trailing-whitespace t)
-               (c-offsets-alist
-                (statement-cont . (c-lineup-assignments +)))
-               )
-             )
-(setq c-default-style "ffmpeg")
+(setq c-default-style "k&r")
+(setq-default c-basic-offset 4)
+(setq-default indent-tabs-mode nil)
+(setq-default show-trailing-whitespace t)
 @end example
 
 @section Development Policy
@@ -354,7 +345,7 @@ for us and greatly increases your chances of getting your patch applied.
 Use the patcheck tool of FFmpeg to check your patch.
 The tool is located in the tools directory.
 
-Run the @ref{Regression tests} before submitting a patch in order to verify
+Run the @ref{Regression Tests} before submitting a patch in order to verify
 it does not cause unexpected problems.
 
 Patches should be posted as base64 encoded attachments (or any other
@@ -517,13 +508,12 @@ not related to the comments received during review. Such patches will
 be rejected. Instead, submit significant changes or new features as
 separate patches.
 
-@anchor{Regression tests}
 @section Regression tests
 
 Before submitting a patch (or committing to the repository), you should at least
 test that you did not break anything.
 
-Running 'make fate' accomplishes this, please see @url{fate.html} for details.
+Running 'make fate' accomplishes this, please see @file{doc/fate.txt} for details.
 
 [Of course, some patches may change the results of the regression tests. In
 this case, the reference results of the regression tests shall be modified

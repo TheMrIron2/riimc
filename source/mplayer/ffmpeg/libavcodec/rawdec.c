@@ -106,7 +106,7 @@ static av_cold int raw_init_decoder(AVCodecContext *avctx)
     if((avctx->bits_per_coded_sample == 4 || avctx->bits_per_coded_sample == 2) &&
        avctx->pix_fmt==PIX_FMT_PAL8 &&
        (!avctx->codec_tag || avctx->codec_tag == MKTAG('r','a','w',' '))){
-        context->length = avpicture_get_size(avctx->pix_fmt, FFALIGN(avctx->width, 16), avctx->height);
+        context->length = avpicture_get_size(avctx->pix_fmt, (avctx->width+3)&~3, avctx->height);
         context->buffer = av_malloc(context->length);
         if (!context->buffer)
             return -1;
@@ -119,7 +119,6 @@ static av_cold int raw_init_decoder(AVCodecContext *avctx)
     avctx->coded_frame= &context->pic;
 
     if((avctx->extradata_size >= 9 && !memcmp(avctx->extradata + avctx->extradata_size - 9, "BottomUp", 9)) ||
-        avctx->codec_tag == MKTAG('c','y','u','v') ||
         avctx->codec_tag == MKTAG(3, 0, 0, 0) || avctx->codec_tag == MKTAG('W','R','A','W'))
         context->flip=1;
 
@@ -137,12 +136,10 @@ static int raw_decode(AVCodecContext *avctx,
 {
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
-    int linesize_align = 4;
     RawVideoContext *context = avctx->priv_data;
-    int res;
 
-    AVFrame   *frame   = data;
-    AVPicture *picture = data;
+    AVFrame * frame = (AVFrame *) data;
+    AVPicture * picture = (AVPicture *) data;
 
     frame->pict_type        = avctx->coded_frame->pict_type;
     frame->interlaced_frame = avctx->coded_frame->interlaced_frame;
@@ -156,31 +153,23 @@ static int raw_decode(AVCodecContext *avctx,
         frame->top_field_first  = context->tff;
     }
 
-    if (avctx->width <= 0 || avctx->height <= 0) {
-        av_log(avctx, AV_LOG_ERROR, "w/h is invalid\n");
-        return AVERROR(EINVAL);
-    }
-
     //2bpp and 4bpp raw in avi and mov (yes this is ugly ...)
     if (context->buffer) {
         int i;
         uint8_t *dst = context->buffer;
         buf_size = context->length - 256*4;
         if (avctx->bits_per_coded_sample == 4){
-            for(i=0; 2*i+1 < buf_size && i<avpkt->size; i++){
+            for(i=0; 2*i+1 < buf_size; i++){
                 dst[2*i+0]= buf[i]>>4;
                 dst[2*i+1]= buf[i]&15;
             }
-            linesize_align = 8;
-        } else {
-            for(i=0; 4*i+3 < buf_size && i<avpkt->size; i++){
+        } else
+            for(i=0; 4*i+3 < buf_size; i++){
                 dst[4*i+0]= buf[i]>>6;
                 dst[4*i+1]= buf[i]>>4&3;
                 dst[4*i+2]= buf[i]>>2&3;
                 dst[4*i+3]= buf[i]   &3;
             }
-            linesize_align = 16;
-        }
         buf= dst;
     }
 
@@ -191,11 +180,10 @@ static int raw_decode(AVCodecContext *avctx,
     if(buf_size < context->length - (avctx->pix_fmt==PIX_FMT_PAL8 ? 256*4 : 0))
         return -1;
 
-    if ((res = avpicture_fill(picture, buf, avctx->pix_fmt,
-                              avctx->width, avctx->height)) < 0)
-        return res;
+    avpicture_fill(picture, buf, avctx->pix_fmt, avctx->width, avctx->height);
     if((avctx->pix_fmt==PIX_FMT_PAL8 && buf_size < context->length) ||
-       (av_pix_fmt_descriptors[avctx->pix_fmt].flags & PIX_FMT_PSEUDOPAL)) {
+       (avctx->pix_fmt!=PIX_FMT_PAL8 &&
+        (av_pix_fmt_descriptors[avctx->pix_fmt].flags & PIX_FMT_PAL))){
         frame->data[1]= context->palette;
     }
     if (avctx->pix_fmt == PIX_FMT_PAL8) {
@@ -211,10 +199,9 @@ static int raw_decode(AVCodecContext *avctx,
         avctx->pix_fmt==PIX_FMT_RGB555LE ||
         avctx->pix_fmt==PIX_FMT_RGB555BE ||
         avctx->pix_fmt==PIX_FMT_RGB565LE ||
-        avctx->pix_fmt==PIX_FMT_MONOWHITE ||
         avctx->pix_fmt==PIX_FMT_PAL8) &&
-        FFALIGN(frame->linesize[0], linesize_align)*avctx->height <= buf_size)
-        frame->linesize[0] = FFALIGN(frame->linesize[0], linesize_align);
+        ((frame->linesize[0]+3)&~3)*avctx->height <= buf_size)
+        frame->linesize[0] = (frame->linesize[0]+3)&~3;
 
     if(context->flip)
         flip(avctx, picture);
@@ -232,16 +219,6 @@ static int raw_decode(AVCodecContext *avctx,
         for(y = 0; y < avctx->height; y++) {
             for(x = 0; x < avctx->width; x++)
                 line[2*x + 1] ^= 0x80;
-            line += picture->linesize[0];
-        }
-    }
-    if(avctx->codec_tag == AV_RL32("YVYU") &&
-       avctx->pix_fmt   == PIX_FMT_YUYV422) {
-        int x, y;
-        uint8_t *line = picture->data[0];
-        for(y = 0; y < avctx->height; y++) {
-            for(x = 0; x < avctx->width - 1; x += 2)
-                FFSWAP(uint8_t, line[2*x + 1], line[2*x + 3]);
             line += picture->linesize[0];
         }
     }
@@ -266,6 +243,6 @@ AVCodec ff_rawvideo_decoder = {
     .init           = raw_init_decoder,
     .close          = raw_close_decoder,
     .decode         = raw_decode,
-    .long_name      = NULL_IF_CONFIG_SMALL("raw video"),
-    .priv_class     = &class,
+    .long_name = NULL_IF_CONFIG_SMALL("raw video"),
+    .priv_class= &class,
 };

@@ -204,7 +204,7 @@ static int audio_write_trailer(AVFormatContext *s1)
 
 /* grab support */
 
-static int audio_read_header(AVFormatContext *s1)
+static int audio_read_header(AVFormatContext *s1, AVFormatParameters *ap)
 {
     AudioData *s = s1->priv_data;
     AVStream *st;

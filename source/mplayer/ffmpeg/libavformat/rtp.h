@@ -72,7 +72,7 @@ enum CodecID ff_rtp_codec_id(const char *buf, enum AVMediaType codec_type);
 #define RTP_VERSION 2
 #define RTP_MAX_SDES 256   /**< maximum text length for SDES */
 
-/* RTCP packets use 0.5% of the bandwidth */
+/* RTCP paquets use 0.5 % of the bandwidth */
 #define RTCP_TX_RATIO_NUM 5
 #define RTCP_TX_RATIO_DEN 1000
 
@@ -90,7 +90,5 @@ enum RTCPType {
     RTCP_BYE,  // 203
     RTCP_APP   // 204
 };
-
-#define RTP_PT_IS_RTCP(x) ((x) >= RTCP_SR && (x) <= RTCP_APP)
 
 #endif /* AVFORMAT_RTP_H */

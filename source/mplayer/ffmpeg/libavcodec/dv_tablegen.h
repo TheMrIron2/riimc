@@ -24,7 +24,6 @@
 #define AVCODEC_DV_TABLEGEN_H
 
 #include <stdint.h>
-
 #include "dv_vlc_data.h"
 
 #if CONFIG_SMALL

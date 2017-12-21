@@ -65,7 +65,6 @@ typedef struct {
     int pack_header_freq;     /* frequency (in packets^-1) at which we send pack headers */
     int system_header_freq;
     int system_header_size;
-    int user_mux_rate; /* bitrate in units of bits/s */
     int mux_rate; /* bitrate in units of 50 bytes/s */
     /* stream info */
     int audio_bound;
@@ -319,8 +318,6 @@ static int mpeg_mux_init(AVFormatContext *ctx)
         s->packet_size = ctx->packet_size;
     } else
         s->packet_size = 2048;
-    if (ctx->max_delay < 0) /* Not set by the caller */
-        ctx->max_delay = 0;
 
     s->vcd_padding_bytes_written = 0;
     s->vcd_padding_bitrate=0;
@@ -424,12 +421,15 @@ static int mpeg_mux_init(AVFormatContext *ctx)
             video_bitrate += codec_rate;
     }
 
-    if (s->user_mux_rate) {
-        s->mux_rate = (s->user_mux_rate + (8 * 50) - 1) / (8 * 50);
-    } else {
+#if FF_API_MUXRATE
+    if(ctx->mux_rate){
+        s->mux_rate= (ctx->mux_rate + (8 * 50) - 1) / (8 * 50);
+    } else
+#endif
+    if (!s->mux_rate) {
         /* we increase slightly the bitrate to take into account the
            headers. XXX: compute it exactly */
-        bitrate += bitrate / 20;
+        bitrate += bitrate*5LL/100;
         bitrate += 10000;
         s->mux_rate = (bitrate + (8 * 50) - 1) / (8 * 50);
     }
@@ -835,12 +835,6 @@ static int flush_packet(AVFormatContext *ctx, int stream_index,
 
         if (stuffing_size < 0)
             stuffing_size = 0;
-
-        if (startcode == PRIVATE_STREAM_1 && id >= 0xa0) {
-            if (payload_size < av_fifo_size(stream->fifo))
-                stuffing_size += payload_size % stream->lpcm_align;
-        }
-
         if (stuffing_size > 16) {    /*<=16 for MPEG-1, <=32 for MPEG-2*/
             pad_packet_bytes += stuffing_size;
             packet_size      -= stuffing_size;
@@ -1053,7 +1047,7 @@ retry:
         StreamInfo *stream = st->priv_data;
         const int avail_data=  av_fifo_size(stream->fifo);
         const int space= stream->max_buffer_size - stream->buffer_index;
-        int rel_space= 1024LL*space / stream->max_buffer_size;
+        int rel_space= 1024*space / stream->max_buffer_size;
         PacketDesc *next_pkt= stream->premux_packet;
 
         /* for subtitle, a single PES packet must be generated,
@@ -1169,6 +1163,10 @@ static int mpeg_mux_write_packet(AVFormatContext *ctx, AVPacket *pkt)
     int preload;
     const int is_iframe = st->codec->codec_type == AVMEDIA_TYPE_VIDEO && (pkt->flags & AV_PKT_FLAG_KEY);
 
+#if FF_API_PRELOAD
+    if (ctx->preload)
+        s->preload = ctx->preload;
+#endif
     preload = av_rescale(s->preload, 90000, AV_TIME_BASE);
 
     pts= pkt->pts;
@@ -1246,7 +1244,7 @@ static int mpeg_mux_end(AVFormatContext *ctx)
 #define OFFSET(x) offsetof(MpegMuxContext, x)
 #define E AV_OPT_FLAG_ENCODING_PARAM
 static const AVOption options[] = {
-    { "muxrate", NULL, OFFSET(user_mux_rate), AV_OPT_TYPE_INT, {0}, 0, INT_MAX, E },
+    { "muxrate", NULL, OFFSET(mux_rate), AV_OPT_TYPE_INT, {0}, 0, INT_MAX, E },
     { "preload", "Initial demux-decode delay in microseconds.", OFFSET(preload),  AV_OPT_TYPE_INT, {500000}, 0, INT_MAX, E},
     { NULL },
 };

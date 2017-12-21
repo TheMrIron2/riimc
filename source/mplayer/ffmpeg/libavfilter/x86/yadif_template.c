@@ -261,3 +261,4 @@ void RENAME(ff_yadif_filter_line)(uint8_t *dst,
 #undef CHECK1
 #undef CHECK2
 #undef FILTER
+

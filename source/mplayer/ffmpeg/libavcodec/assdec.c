@@ -26,13 +26,11 @@
 static av_cold int ass_decode_init(AVCodecContext *avctx)
 {
     avctx->subtitle_header = av_malloc(avctx->extradata_size);
-    if (!avctx->subtitle_header)
+    if (!avctx->extradata)
         return AVERROR(ENOMEM);
     memcpy(avctx->subtitle_header, avctx->extradata, avctx->extradata_size);
     avctx->subtitle_header_size = avctx->extradata_size;
     avctx->priv_data = ff_ass_split(avctx->extradata);
-    if(!avctx->priv_data)
-        return -1;
     return 0;
 }
 
@@ -43,11 +41,8 @@ static int ass_decode_frame(AVCodecContext *avctx, void *data, int *got_sub_ptr,
     int len, size = avpkt->size;
 
     while (size > 0) {
-        int duration;
         ASSDialog *dialog = ff_ass_split_dialog(avctx->priv_data, ptr, 0, NULL);
-        if (!dialog)
-            return AVERROR_INVALIDDATA;
-        duration = dialog->end - dialog->start;
+        int duration = dialog->end - dialog->start;
         len = ff_ass_add_rect(data, ptr, 0, duration, 1);
         if (len < 0)
             return len;

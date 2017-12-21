@@ -18,7 +18,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/arm/cpu.h"
 #include "libavcodec/avcodec.h"
 #include "libavcodec/dsputil.h"
 #include "libavcodec/mpegvideo.h"
@@ -39,14 +38,20 @@ void ff_dct_unquantize_h263_inter_neon(MpegEncContext *s, DCTELEM *block,
 void ff_dct_unquantize_h263_intra_neon(MpegEncContext *s, DCTELEM *block,
                                        int n, int qscale);
 
-void ff_MPV_common_init_arm(MpegEncContext *s)
+void MPV_common_init_arm(MpegEncContext *s)
 {
-    int cpu_flags = av_get_cpu_flags();
+    /* IWMMXT support is a superset of armv5te, so
+     * allow optimized functions for armv5te unless
+     * a better iwmmxt function exists
+     */
+#if HAVE_ARMV5TE
+    MPV_common_init_armv5te(s);
+#endif
+#if HAVE_IWMMXT
+    MPV_common_init_iwmmxt(s);
+#endif
 
-    if (have_armv5te(cpu_flags))
-        ff_MPV_common_init_armv5te(s);
-
-    if (have_neon(cpu_flags)) {
+    if (HAVE_NEON) {
         s->dct_unquantize_h263_intra = ff_dct_unquantize_h263_intra_neon;
         s->dct_unquantize_h263_inter = ff_dct_unquantize_h263_inter_neon;
     }

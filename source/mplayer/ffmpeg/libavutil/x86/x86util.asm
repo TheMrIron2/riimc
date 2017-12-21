@@ -42,9 +42,10 @@
 %endmacro
 
 %macro SBUTTERFLYPS 3
-    unpcklps m%3, m%1, m%2
-    unpckhps m%1, m%1, m%2
-    SWAP %1, %3, %2
+    movaps   m%3, m%1
+    unpcklps m%1, m%2
+    unpckhps m%3, m%2
+    SWAP %2, %3
 %endmacro
 
 %macro TRANSPOSE4x4B 5
@@ -84,16 +85,17 @@
 %macro TRANSPOSE4x4PS 5
     SBUTTERFLYPS %1, %2, %5
     SBUTTERFLYPS %3, %4, %5
-    movlhps m%5, m%1, m%3
-    movhlps m%3, m%1
-    SWAP %5, %1
-    movlhps m%5, m%2, m%4
-    movhlps m%4, m%2
-    SWAP %5, %2, %3
+    movaps  m%5, m%1
+    movlhps m%1, m%3
+    movhlps m%3, m%5
+    movaps  m%5, m%2
+    movlhps m%2, m%4
+    movhlps m%4, m%5
+    SWAP %2, %3
 %endmacro
 
 %macro TRANSPOSE8x8W 9-11
-%if ARCH_X86_64
+%ifdef ARCH_X86_64
     SBUTTERFLY wd,  %1, %2, %9
     SBUTTERFLY wd,  %3, %4, %9
     SBUTTERFLY wd,  %5, %6, %9
@@ -582,13 +584,4 @@
 %macro CLIPD_SSE41 3-4 ;  src/dst, min, max, unused
     pminsd  %1, %3
     pmaxsd  %1, %2
-%endmacro
-
-%macro VBROADCASTSS 2 ; dst xmm/ymm, src m32
-%if cpuflag(avx)
-    vbroadcastss %1, %2
-%else ; sse
-    movss        %1, %2
-    shufps       %1, %1, 0
-%endif
 %endmacro

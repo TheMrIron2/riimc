@@ -25,15 +25,7 @@
 #define AVCODEC_VDPAU_H
 
 /**
- * @file
- * @ingroup lavc_codec_hwaccel_vdpau
- * Public libavcodec VDPAU header.
- */
-
-
-/**
- * @defgroup lavc_codec_hwaccel_vdpau VDPAU Decoder and Renderer
- * @ingroup lavc_codec_hwaccel
+ * @defgroup Decoder VDPAU Decoder and Renderer
  *
  * VDPAU hardware acceleration has two modules
  * - VDPAU decoding
@@ -46,6 +38,8 @@
  * and rendering (API calls) are done as part of the VDPAU
  * presentation (vo_vdpau.c) module.
  *
+ * @defgroup  VDPAU_Decoding VDPAU Decoding
+ * @ingroup Decoder
  * @{
  */
 

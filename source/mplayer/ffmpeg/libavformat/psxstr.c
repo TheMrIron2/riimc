@@ -130,7 +130,8 @@ static int str_probe(AVProbeData *p)
     else             return 0;
 }
 
-static int str_read_header(AVFormatContext *s)
+static int str_read_header(AVFormatContext *s,
+                           AVFormatParameters *ap)
 {
     AVIOContext *pb = s->pb;
     StrDemuxContext *str = s->priv_data;
@@ -258,9 +259,7 @@ static int str_read_packet(AVFormatContext *s,
             //    st->codec->bit_rate = 0; //FIXME;
                 st->codec->block_align = 128;
 
-                avpriv_set_pts_info(st, 64, 18 * 224 / st->codec->channels,
-                                    st->codec->sample_rate);
-                st->start_time = 0;
+                avpriv_set_pts_info(st, 64, 128, st->codec->sample_rate);
             }
             pkt = ret_pkt;
             if (av_new_packet(pkt, 2304))
@@ -269,7 +268,6 @@ static int str_read_packet(AVFormatContext *s,
 
             pkt->stream_index =
                 str->channels[channel].audio_stream_index;
-            pkt->duration = 1;
             return 0;
         default:
             av_log(s, AV_LOG_WARNING, "Unknown sector type %02X\n", sector[0x12]);
@@ -302,5 +300,4 @@ AVInputFormat ff_str_demuxer = {
     .read_header    = str_read_header,
     .read_packet    = str_read_packet,
     .read_close     = str_read_close,
-    .flags          = AVFMT_NO_BYTE_SEEK,
 };

@@ -57,7 +57,8 @@ static int probe(AVProbeData *p)
     return AVPROBE_SCORE_MAX;
 }
 
-static int read_header(AVFormatContext *s)
+static int read_header(AVFormatContext *s,
+                           AVFormatParameters *ap)
 {
     AVStream *video;
     AVIOContext *pb = s->pb;
@@ -123,7 +124,7 @@ static int read_packet(AVFormatContext *s, AVPacket *pkt)
                 c93->audio->codec->codec_type = AVMEDIA_TYPE_AUDIO;
             }
             avio_skip(pb, 26); /* VOC header */
-            ret = ff_voc_get_packet(s, pkt, c93->audio, datasize - 26);
+            ret = voc_get_packet(s, pkt, c93->audio, datasize - 26);
             if (ret > 0) {
                 pkt->stream_index = 1;
                 pkt->flags |= AV_PKT_FLAG_KEY;

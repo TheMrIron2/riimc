@@ -72,7 +72,8 @@ static int efi_read(AVFormatContext *avctx, uint64_t start_pos)
     return 0;
 }
 
-static int read_header(AVFormatContext *avctx)
+static int read_header(AVFormatContext *avctx,
+                       AVFormatParameters *ap)
 {
     TtyDemuxContext *s = avctx->priv_data;
     int width = 0, height = 0, ret = 0;

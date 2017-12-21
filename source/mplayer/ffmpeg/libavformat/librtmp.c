@@ -152,7 +152,7 @@ static int rtmp_get_file_handle(URLContext *s)
     return RTMP_Socket(r);
 }
 
-URLProtocol ff_librtmp_protocol = {
+URLProtocol ff_rtmp_protocol = {
     .name                = "rtmp",
     .url_open            = rtmp_open,
     .url_read            = rtmp_read,
@@ -162,10 +162,9 @@ URLProtocol ff_librtmp_protocol = {
     .url_read_seek       = rtmp_read_seek,
     .url_get_file_handle = rtmp_get_file_handle,
     .priv_data_size      = sizeof(RTMP),
-    .flags               = URL_PROTOCOL_FLAG_NETWORK,
 };
 
-URLProtocol ff_librtmpt_protocol = {
+URLProtocol ff_rtmpt_protocol = {
     .name                = "rtmpt",
     .url_open            = rtmp_open,
     .url_read            = rtmp_read,
@@ -175,10 +174,9 @@ URLProtocol ff_librtmpt_protocol = {
     .url_read_seek       = rtmp_read_seek,
     .url_get_file_handle = rtmp_get_file_handle,
     .priv_data_size      = sizeof(RTMP),
-    .flags               = URL_PROTOCOL_FLAG_NETWORK,
 };
 
-URLProtocol ff_librtmpe_protocol = {
+URLProtocol ff_rtmpe_protocol = {
     .name                = "rtmpe",
     .url_open            = rtmp_open,
     .url_read            = rtmp_read,
@@ -188,10 +186,9 @@ URLProtocol ff_librtmpe_protocol = {
     .url_read_seek       = rtmp_read_seek,
     .url_get_file_handle = rtmp_get_file_handle,
     .priv_data_size      = sizeof(RTMP),
-    .flags               = URL_PROTOCOL_FLAG_NETWORK,
 };
 
-URLProtocol ff_librtmpte_protocol = {
+URLProtocol ff_rtmpte_protocol = {
     .name                = "rtmpte",
     .url_open            = rtmp_open,
     .url_read            = rtmp_read,
@@ -201,10 +198,9 @@ URLProtocol ff_librtmpte_protocol = {
     .url_read_seek       = rtmp_read_seek,
     .url_get_file_handle = rtmp_get_file_handle,
     .priv_data_size      = sizeof(RTMP),
-    .flags               = URL_PROTOCOL_FLAG_NETWORK,
 };
 
-URLProtocol ff_librtmps_protocol = {
+URLProtocol ff_rtmps_protocol = {
     .name                = "rtmps",
     .url_open            = rtmp_open,
     .url_read            = rtmp_read,
@@ -214,5 +210,4 @@ URLProtocol ff_librtmps_protocol = {
     .url_read_seek       = rtmp_read_seek,
     .url_get_file_handle = rtmp_get_file_handle,
     .priv_data_size      = sizeof(RTMP),
-    .flags               = URL_PROTOCOL_FLAG_NETWORK,
 };

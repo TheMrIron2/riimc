@@ -25,7 +25,7 @@
  */
 
 #include "avcodec.h"
-#define BITSTREAM_READER_LE
+#define ALT_BITSTREAM_READER_LE
 #include "get_bits.h"
 
 
@@ -266,5 +266,5 @@ AVCodec ff_tiertexseqvideo_decoder = {
     .close          = seqvideo_decode_end,
     .decode         = seqvideo_decode_frame,
     .capabilities   = CODEC_CAP_DR1,
-    .long_name      = NULL_IF_CONFIG_SMALL("Tiertex Limited SEQ video"),
+    .long_name = NULL_IF_CONFIG_SMALL("Tiertex Limited SEQ video"),
 };

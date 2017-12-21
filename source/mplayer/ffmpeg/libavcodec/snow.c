@@ -99,7 +99,7 @@ static void init_qexp(void){
     double v=128;
 
     for(i=0; i<QROOT; i++){
-        ff_qexp[i]= lrintf(v);
+        qexp[i]= lrintf(v);
         v *= pow(2, 1.0 / QROOT);
     }
 }
@@ -390,7 +390,7 @@ av_cold int ff_snow_common_init(AVCodecContext *avctx){
     s->avctx= avctx;
     s->max_ref_frames=1; //just make sure its not an invalid value in case of no initial keyframe
 
-    ff_dsputil_init(&s->dsp, avctx);
+    dsputil_init(&s->dsp, avctx);
     ff_dwt_init(&s->dwt);
 
 #define mcf(dx,dy)\
@@ -443,10 +443,10 @@ av_cold int ff_snow_common_init(AVCodecContext *avctx){
 
     for(i=0; i<MAX_REF_FRAMES; i++)
         for(j=0; j<MAX_REF_FRAMES; j++)
-            ff_scale_mv_ref[i][j] = 256*(i+1)/(j+1);
+            scale_mv_ref[i][j] = 256*(i+1)/(j+1);
 
     s->avctx->get_buffer(s->avctx, &s->mconly_picture);
-    s->scratchbuf = av_mallocz(s->mconly_picture.linesize[0]*7*MB_SIZE);
+    s->scratchbuf = av_malloc(s->mconly_picture.linesize[0]*7*MB_SIZE);
 
     return 0;
 }
@@ -516,9 +516,9 @@ static void halfpel_interpol(SnowContext *s, uint8_t *halfpel[4][4], AVFrame *fr
         int ls= frame->linesize[p];
         uint8_t *src= frame->data[p];
 
-        halfpel[1][p] = (uint8_t*) av_malloc(ls * (h + 2 * EDGE_WIDTH)) + EDGE_WIDTH * (1 + ls);
-        halfpel[2][p] = (uint8_t*) av_malloc(ls * (h + 2 * EDGE_WIDTH)) + EDGE_WIDTH * (1 + ls);
-        halfpel[3][p] = (uint8_t*) av_malloc(ls * (h + 2 * EDGE_WIDTH)) + EDGE_WIDTH * (1 + ls);
+        halfpel[1][p]= (uint8_t*)av_malloc(ls * (h+2*EDGE_WIDTH)) + EDGE_WIDTH*(1+ls);
+        halfpel[2][p]= (uint8_t*)av_malloc(ls * (h+2*EDGE_WIDTH)) + EDGE_WIDTH*(1+ls);
+        halfpel[3][p]= (uint8_t*)av_malloc(ls * (h+2*EDGE_WIDTH)) + EDGE_WIDTH*(1+ls);
 
         halfpel[0][p]= src;
         for(y=0; y<h; y++){
@@ -650,3 +650,4 @@ av_cold void ff_snow_common_end(SnowContext *s)
     if (s->current_picture.data[0])
         s->avctx->release_buffer(s->avctx, &s->current_picture);
 }
+

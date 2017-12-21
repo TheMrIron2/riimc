@@ -25,7 +25,6 @@
  */
 
 #include "avcodec.h"
-#include "internal.h"
 #include "libavutil/common.h"
 #include "put_bits.h"
 #include "dsputil.h"
@@ -326,12 +325,10 @@ static inline int decode_mb(ASV1Context *a, DCTELEM block[6][64]){
     return 0;
 }
 
-#define MAX_MB_SIZE (30*16*16*3/2/8)
-
 static inline int encode_mb(ASV1Context *a, DCTELEM block[6][64]){
     int i;
 
-    if (a->pb.buf_end - a->pb.buf - (put_bits_count(&a->pb)>>3) < MAX_MB_SIZE) {
+    if(a->pb.buf_end - a->pb.buf - (put_bits_count(&a->pb)>>3) < 30*16*16*3/2/8){
         av_log(a->avctx, AV_LOG_ERROR, "encoded frame too large\n");
         return -1;
     }
@@ -411,8 +408,7 @@ static int decode_frame(AVCodecContext *avctx,
     p->pict_type= AV_PICTURE_TYPE_I;
     p->key_frame= 1;
 
-    av_fast_padded_malloc(&a->bitstream_buffer, &a->bitstream_buffer_size,
-                          buf_size);
+    av_fast_malloc(&a->bitstream_buffer, &a->bitstream_buffer_size, buf_size + FF_INPUT_BUFFER_PADDING_SIZE);
     if (!a->bitstream_buffer)
         return AVERROR(ENOMEM);
 
@@ -455,7 +451,7 @@ static int decode_frame(AVCodecContext *avctx,
         }
     }
 
-    *picture   = a->picture;
+    *picture= *(AVFrame*)&a->picture;
     *data_size = sizeof(AVPicture);
 
     emms_c();
@@ -464,19 +460,14 @@ static int decode_frame(AVCodecContext *avctx,
 }
 
 #if CONFIG_ASV1_ENCODER || CONFIG_ASV2_ENCODER
-static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
-                        const AVFrame *pict, int *got_packet)
-{
+static int encode_frame(AVCodecContext *avctx, unsigned char *buf, int buf_size, void *data){
     ASV1Context * const a = avctx->priv_data;
+    AVFrame *pict = data;
     AVFrame * const p= &a->picture;
-    int size, ret;
+    int size;
     int mb_x, mb_y;
 
-    if ((ret = ff_alloc_packet2(avctx, pkt, a->mb_height*a->mb_width*MAX_MB_SIZE +
-                                  FF_MIN_BUFFER_SIZE)) < 0)
-        return ret;
-
-    init_put_bits(&a->pb, pkt->data, pkt->size);
+    init_put_bits(&a->pb, buf, buf_size);
 
     *p = *pict;
     p->pict_type= AV_PICTURE_TYPE_I;
@@ -513,25 +504,21 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     size= put_bits_count(&a->pb)/32;
 
     if(avctx->codec_id == CODEC_ID_ASV1)
-        a->dsp.bswap_buf((uint32_t*)pkt->data, (uint32_t*)pkt->data, size);
+        a->dsp.bswap_buf((uint32_t*)buf, (uint32_t*)buf, size);
     else{
         int i;
         for(i=0; i<4*size; i++)
-            pkt->data[i] = av_reverse[pkt->data[i]];
+            buf[i]= av_reverse[ buf[i] ];
     }
 
-    pkt->size   = size*4;
-    pkt->flags |= AV_PKT_FLAG_KEY;
-    *got_packet = 1;
-
-    return 0;
+    return size*4;
 }
 #endif /* CONFIG_ASV1_ENCODER || CONFIG_ASV2_ENCODER */
 
 static av_cold void common_init(AVCodecContext *avctx){
     ASV1Context * const a = avctx->priv_data;
 
-    ff_dsputil_init(&a->dsp, avctx);
+    dsputil_init(&a->dsp, avctx);
 
     a->mb_width   = (avctx->width  + 15) / 16;
     a->mb_height  = (avctx->height + 15) / 16;
@@ -553,7 +540,8 @@ static av_cold int decode_init(AVCodecContext *avctx){
     ff_init_scantable(a->dsp.idct_permutation, &a->scantable, scantab);
     avctx->pix_fmt= PIX_FMT_YUV420P;
 
-    if(avctx->extradata_size < 1 || (a->inv_qscale= avctx->extradata[0]) == 0){
+    a->inv_qscale= avctx->extradata[0];
+    if(a->inv_qscale == 0){
         av_log(avctx, AV_LOG_ERROR, "illegal qscale 0\n");
         if(avctx->codec_id == CODEC_ID_ASV1)
             a->inv_qscale= 6;
@@ -623,7 +611,7 @@ AVCodec ff_asv1_decoder = {
     .close          = decode_end,
     .decode         = decode_frame,
     .capabilities   = CODEC_CAP_DR1,
-    .long_name      = NULL_IF_CONFIG_SMALL("ASUS V1"),
+    .long_name= NULL_IF_CONFIG_SMALL("ASUS V1"),
 };
 
 AVCodec ff_asv2_decoder = {
@@ -635,7 +623,7 @@ AVCodec ff_asv2_decoder = {
     .close          = decode_end,
     .decode         = decode_frame,
     .capabilities   = CODEC_CAP_DR1,
-    .long_name      = NULL_IF_CONFIG_SMALL("ASUS V2"),
+    .long_name= NULL_IF_CONFIG_SMALL("ASUS V2"),
 };
 
 #if CONFIG_ASV1_ENCODER
@@ -645,9 +633,10 @@ AVCodec ff_asv1_encoder = {
     .id             = CODEC_ID_ASV1,
     .priv_data_size = sizeof(ASV1Context),
     .init           = encode_init,
-    .encode2        = encode_frame,
-    .pix_fmts       = (const enum PixelFormat[]){ PIX_FMT_YUV420P, PIX_FMT_NONE },
-    .long_name      = NULL_IF_CONFIG_SMALL("ASUS V1"),
+    .encode         = encode_frame,
+    //encode_end,
+    .pix_fmts= (const enum PixelFormat[]){PIX_FMT_YUV420P, PIX_FMT_NONE},
+    .long_name= NULL_IF_CONFIG_SMALL("ASUS V1"),
 };
 #endif
 
@@ -658,8 +647,9 @@ AVCodec ff_asv2_encoder = {
     .id             = CODEC_ID_ASV2,
     .priv_data_size = sizeof(ASV1Context),
     .init           = encode_init,
-    .encode2        = encode_frame,
-    .pix_fmts       = (const enum PixelFormat[]){ PIX_FMT_YUV420P, PIX_FMT_NONE },
-    .long_name      = NULL_IF_CONFIG_SMALL("ASUS V2"),
+    .encode         = encode_frame,
+    //encode_end,
+    .pix_fmts= (const enum PixelFormat[]){PIX_FMT_YUV420P, PIX_FMT_NONE},
+    .long_name= NULL_IF_CONFIG_SMALL("ASUS V2"),
 };
 #endif

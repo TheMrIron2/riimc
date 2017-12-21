@@ -19,8 +19,6 @@
  */
 
 #include <stdint.h>
-
-#include "libavutil/arm/cpu.h"
 #include "libavcodec/avcodec.h"
 #include "libavcodec/vp56dsp.h"
 
@@ -29,9 +27,7 @@ void ff_vp6_edge_filter_ver_neon(uint8_t *yuv, int stride, int t);
 
 void ff_vp56dsp_init_arm(VP56DSPContext *s, enum CodecID codec)
 {
-    int cpu_flags = av_get_cpu_flags();
-
-    if (codec != CODEC_ID_VP5 && have_neon(cpu_flags)) {
+    if (codec != CODEC_ID_VP5 && HAVE_NEON) {
         s->edge_filter_hor = ff_vp6_edge_filter_hor_neon;
         s->edge_filter_ver = ff_vp6_edge_filter_ver_neon;
     }

@@ -32,7 +32,6 @@
 #include "aacsbrdata.h"
 #include "fft.h"
 #include "aacps.h"
-#include "sbrdsp.h"
 #include "libavutil/libm.h"
 #include "libavutil/avassert.h"
 
@@ -129,24 +128,13 @@ av_cold void ff_aac_sbr_init(void)
     ff_ps_init();
 }
 
-/** Places SBR in pure upsampling mode. */
-static void sbr_turnoff(SpectralBandReplication *sbr) {
-    sbr->start = 0;
-    // Init defults used in pure upsampling mode
-    sbr->kx[1] = 32; //Typo in spec, kx' inits to 32
-    sbr->m[1] = 0;
-    // Reset values for first SBR header
-    sbr->data[0].e_a[1] = sbr->data[1].e_a[1] = -1;
-    memset(&sbr->spectrum_params, -1, sizeof(SpectrumParameters));
-}
-
 av_cold void ff_aac_sbr_ctx_init(AACContext *ac, SpectralBandReplication *sbr)
 {
     float mdct_scale;
     if(sbr->mdct.mdct_bits)
         return;
-    sbr->kx[0] = sbr->kx[1];
-    sbr_turnoff(sbr);
+    sbr->kx[0] = sbr->kx[1] = 32; //Typo in spec, kx' inits to 32
+    sbr->data[0].e_a[1] = sbr->data[1].e_a[1] = -1;
     sbr->data[0].synthesis_filterbank_samples_offset = SBR_SYNTHESIS_BUF_SIZE - (1280 - 128);
     sbr->data[1].synthesis_filterbank_samples_offset = SBR_SYNTHESIS_BUF_SIZE - (1280 - 128);
     /* SBR requires samples to be scaled to +/-32768.0 to work correctly.
@@ -156,7 +144,6 @@ av_cold void ff_aac_sbr_ctx_init(AACContext *ac, SpectralBandReplication *sbr)
     ff_mdct_init(&sbr->mdct,     7, 1, 1.0 / (64 * mdct_scale));
     ff_mdct_init(&sbr->mdct_ana, 7, 1, -2.0 * mdct_scale);
     ff_ps_ctx_init(&sbr->ps);
-    ff_sbrdsp_init(&sbr->dsp);
 }
 
 av_cold void ff_aac_sbr_ctx_close(SpectralBandReplication *sbr)
@@ -918,7 +905,7 @@ static void read_sbr_extension(AACContext *ac, SpectralBandReplication *sbr,
 {
     switch (bs_extension_id) {
     case EXTENSION_ID_PS:
-        if (!ac->oc[1].m4ac.ps) {
+        if (!ac->m4ac.ps) {
             av_log(ac->avctx, AV_LOG_ERROR, "Parametric Stereo signaled to be not-present but was found in the bitstream.\n");
             skip_bits_long(gb, *num_bits_left); // bs_fill_bits
             *num_bits_left = 0;
@@ -933,9 +920,7 @@ static void read_sbr_extension(AACContext *ac, SpectralBandReplication *sbr,
         }
         break;
     default:
-        // some files contain 0-padding
-        if (bs_extension_id || *num_bits_left > 16 || show_bits(gb, *num_bits_left))
-            av_log_missing_feature(ac->avctx, "Reserved SBR extensions are", 1);
+        av_log_missing_feature(ac->avctx, "Reserved SBR extensions are", 1);
         skip_bits_long(gb, *num_bits_left); // bs_fill_bits
         *num_bits_left = 0;
         break;
@@ -1011,18 +996,18 @@ static unsigned int read_sbr_data(AACContext *ac, SpectralBandReplication *sbr,
 
     if (id_aac == TYPE_SCE || id_aac == TYPE_CCE) {
         if (read_sbr_single_channel_element(ac, sbr, gb)) {
-            sbr_turnoff(sbr);
+            sbr->start = 0;
             return get_bits_count(gb) - cnt;
         }
     } else if (id_aac == TYPE_CPE) {
         if (read_sbr_channel_pair_element(ac, sbr, gb)) {
-            sbr_turnoff(sbr);
+            sbr->start = 0;
             return get_bits_count(gb) - cnt;
         }
     } else {
         av_log(ac->avctx, AV_LOG_ERROR,
             "Invalid bitstream - cannot apply SBR to element type %d\n", id_aac);
-        sbr_turnoff(sbr);
+        sbr->start = 0;
         return get_bits_count(gb) - cnt;
     }
     if (get_bits1(gb)) { // bs_extended_data
@@ -1054,7 +1039,7 @@ static void sbr_reset(AACContext *ac, SpectralBandReplication *sbr)
     if (err < 0) {
         av_log(ac->avctx, AV_LOG_ERROR,
                "SBR reset failed. Switching SBR to pure upsampling mode.\n");
-        sbr_turnoff(sbr);
+        sbr->start = 0;
     }
 }
 
@@ -1077,9 +1062,9 @@ int ff_decode_sbr_extension(AACContext *ac, SpectralBandReplication *sbr,
     sbr->reset = 0;
 
     if (!sbr->sample_rate)
-        sbr->sample_rate = 2 * ac->oc[1].m4ac.sample_rate; //TODO use the nominal sample rate for arbitrary sample rate support
-    if (!ac->oc[1].m4ac.ext_sample_rate)
-        ac->oc[1].m4ac.ext_sample_rate = 2 * ac->oc[1].m4ac.sample_rate;
+        sbr->sample_rate = 2 * ac->m4ac.sample_rate; //TODO use the nominal sample rate for arbitrary sample rate support
+    if (!ac->m4ac.ext_sample_rate)
+        ac->m4ac.ext_sample_rate = 2 * ac->m4ac.sample_rate;
 
     if (crc) {
         skip_bits(gb, 10); // bs_sbr_crc_bits; TODO - implement CRC check
@@ -1089,7 +1074,6 @@ int ff_decode_sbr_extension(AACContext *ac, SpectralBandReplication *sbr,
     //Save some state from the previous frame.
     sbr->kx[0] = sbr->kx[1];
     sbr->m[0] = sbr->m[1];
-    sbr->kx_and_m_pushed = 1;
 
     num_sbr_bits++;
     if (get_bits1(gb)) // bs_header_flag
@@ -1159,21 +1143,33 @@ static void sbr_dequant(SpectralBandReplication *sbr, int id_aac)
  * @param   x       pointer to the beginning of the first sample window
  * @param   W       array of complex-valued samples split into subbands
  */
-static void sbr_qmf_analysis(DSPContext *dsp, FFTContext *mdct,
-                             SBRDSPContext *sbrdsp, const float *in, float *x,
+static void sbr_qmf_analysis(DSPContext *dsp, FFTContext *mdct, const float *in, float *x,
                              float z[320], float W[2][32][32][2])
 {
-    int i;
+    int i, k;
     memcpy(W[0], W[1], sizeof(W[0]));
     memcpy(x    , x+1024, (320-32)*sizeof(x[0]));
     memcpy(x+288, in,         1024*sizeof(x[0]));
     for (i = 0; i < 32; i++) { // numTimeSlots*RATE = 16*2 as 960 sample frames
                                // are not supported
         dsp->vector_fmul_reverse(z, sbr_qmf_window_ds, x, 320);
-        sbrdsp->sum64x5(z);
-        sbrdsp->qmf_pre_shuffle(z);
+        for (k = 0; k < 64; k++) {
+            float f = z[k] + z[k + 64] + z[k + 128] + z[k + 192] + z[k + 256];
+            z[k] = f;
+        }
+        //Shuffle to IMDCT
+        z[64] = z[0];
+        for (k = 1; k < 32; k++) {
+            z[64+2*k-1] =  z[   k];
+            z[64+2*k  ] = -z[64-k];
+        }
+        z[64+63] = z[32];
+
         mdct->imdct_half(mdct, z, z+64);
-        sbrdsp->qmf_post_shuffle(W[1][i], z);
+        for (k = 0; k < 32; k++) {
+            W[1][i][k][0] = -z[63-k];
+            W[1][i][k][1] = z[k];
+        }
         x += 32;
     }
 }
@@ -1183,22 +1179,20 @@ static void sbr_qmf_analysis(DSPContext *dsp, FFTContext *mdct,
  * (14496-3 sp04 p206)
  */
 static void sbr_qmf_synthesis(DSPContext *dsp, FFTContext *mdct,
-                              SBRDSPContext *sbrdsp,
                               float *out, float X[2][38][64],
                               float mdct_buf[2][64],
                               float *v0, int *v_off, const unsigned int div)
 {
     int i, n;
     const float *sbr_qmf_window = div ? sbr_qmf_window_ds : sbr_qmf_window_us;
-    const int step = 128 >> div;
     float *v;
     for (i = 0; i < 32; i++) {
-        if (*v_off < step) {
+        if (*v_off < 128 >> div) {
             int saved_samples = (1280 - 128) >> div;
             memcpy(&v0[SBR_SYNTHESIS_BUF_SIZE - saved_samples], v0, saved_samples * sizeof(float));
-            *v_off = SBR_SYNTHESIS_BUF_SIZE - saved_samples - step;
+            *v_off = SBR_SYNTHESIS_BUF_SIZE - saved_samples - (128 >> div);
         } else {
-            *v_off -= step;
+            *v_off -= 128 >> div;
         }
         v = v0 + *v_off;
         if (div) {
@@ -1207,12 +1201,20 @@ static void sbr_qmf_synthesis(DSPContext *dsp, FFTContext *mdct,
                 X[0][i][32+n] =  X[1][i][31-n];
             }
             mdct->imdct_half(mdct, mdct_buf[0], X[0][i]);
-            sbrdsp->qmf_deint_neg(v, mdct_buf[0]);
+            for (n = 0; n < 32; n++) {
+                v[     n] =  mdct_buf[0][63 - 2*n];
+                v[63 - n] = -mdct_buf[0][62 - 2*n];
+            }
         } else {
-            sbrdsp->neg_odd_64(X[1][i]);
+            for (n = 1; n < 64; n+=2) {
+                X[1][i][n] = -X[1][i][n];
+            }
             mdct->imdct_half(mdct, mdct_buf[0], X[0][i]);
             mdct->imdct_half(mdct, mdct_buf[1], X[1][i]);
-            sbrdsp->qmf_deint_bfly(v, mdct_buf[1], mdct_buf[0]);
+            for (n = 0; n < 64; n++) {
+                v[      n] = -mdct_buf[0][63 -   n] + mdct_buf[1][  n    ];
+                v[127 - n] =  mdct_buf[0][63 -   n] + mdct_buf[1][  n    ];
+            }
         }
         dsp->vector_fmul_add(out, v                , sbr_qmf_window               , zero64, 64 >> div);
         dsp->vector_fmul_add(out, v + ( 192 >> div), sbr_qmf_window + ( 64 >> div), out   , 64 >> div);
@@ -1228,20 +1230,45 @@ static void sbr_qmf_synthesis(DSPContext *dsp, FFTContext *mdct,
     }
 }
 
+static void autocorrelate(const float x[40][2], float phi[3][2][2], int lag)
+{
+    int i;
+    float real_sum = 0.0f;
+    float imag_sum = 0.0f;
+    if (lag) {
+        for (i = 1; i < 38; i++) {
+            real_sum += x[i][0] * x[i+lag][0] + x[i][1] * x[i+lag][1];
+            imag_sum += x[i][0] * x[i+lag][1] - x[i][1] * x[i+lag][0];
+        }
+        phi[2-lag][1][0] = real_sum + x[ 0][0] * x[lag][0] + x[ 0][1] * x[lag][1];
+        phi[2-lag][1][1] = imag_sum + x[ 0][0] * x[lag][1] - x[ 0][1] * x[lag][0];
+        if (lag == 1) {
+            phi[0][0][0] = real_sum + x[38][0] * x[39][0] + x[38][1] * x[39][1];
+            phi[0][0][1] = imag_sum + x[38][0] * x[39][1] - x[38][1] * x[39][0];
+        }
+    } else {
+        for (i = 1; i < 38; i++) {
+            real_sum += x[i][0] * x[i][0] + x[i][1] * x[i][1];
+        }
+        phi[2][1][0] = real_sum + x[ 0][0] * x[ 0][0] + x[ 0][1] * x[ 0][1];
+        phi[1][0][0] = real_sum + x[38][0] * x[38][0] + x[38][1] * x[38][1];
+    }
+}
+
 /** High Frequency Generation (14496-3 sp04 p214+) and Inverse Filtering
  * (14496-3 sp04 p214)
  * Warning: This routine does not seem numerically stable.
  */
-static void sbr_hf_inverse_filter(SBRDSPContext *dsp,
-                                  float (*alpha0)[2], float (*alpha1)[2],
+static void sbr_hf_inverse_filter(float (*alpha0)[2], float (*alpha1)[2],
                                   const float X_low[32][40][2], int k0)
 {
     int k;
     for (k = 0; k < k0; k++) {
-        LOCAL_ALIGNED_16(float, phi, [3], [2][2]);
-        float dk;
+        float phi[3][2][2], dk;
 
-        dsp->autocorrelate(X_low[k], phi);
+        autocorrelate(X_low[k], phi, 0);
+        autocorrelate(X_low[k], phi, 1);
+        autocorrelate(X_low[k], phi, 2);
 
         dk =  phi[2][1][0] * phi[1][0][0] -
              (phi[1][1][0] * phi[1][1][0] + phi[1][1][1] * phi[1][1][1]) / 1.000001f;
@@ -1337,11 +1364,12 @@ static int sbr_hf_gen(AACContext *ac, SpectralBandReplication *sbr,
                       const float bw_array[5], const uint8_t *t_env,
                       int bs_num_env)
 {
-    int j, x;
+    int i, j, x;
     int g = 0;
     int k = sbr->kx[1];
     for (j = 0; j < sbr->num_patches; j++) {
         for (x = 0; x < sbr->patch_num_subbands[j]; x++, k++) {
+            float alpha[4];
             const int p = sbr->patch_start_subband[j] + x;
             while (g <= sbr->n_q && k >= sbr->f_tablenoise[g])
                 g++;
@@ -1353,10 +1381,26 @@ static int sbr_hf_gen(AACContext *ac, SpectralBandReplication *sbr,
                 return -1;
             }
 
-            sbr->dsp.hf_gen(X_high[k] + ENVELOPE_ADJUSTMENT_OFFSET,
-                            X_low[p]  + ENVELOPE_ADJUSTMENT_OFFSET,
-                            alpha0[p], alpha1[p], bw_array[g],
-                            2 * t_env[0], 2 * t_env[bs_num_env]);
+            alpha[0] = alpha1[p][0] * bw_array[g] * bw_array[g];
+            alpha[1] = alpha1[p][1] * bw_array[g] * bw_array[g];
+            alpha[2] = alpha0[p][0] * bw_array[g];
+            alpha[3] = alpha0[p][1] * bw_array[g];
+
+            for (i = 2 * t_env[0]; i < 2 * t_env[bs_num_env]; i++) {
+                const int idx = i + ENVELOPE_ADJUSTMENT_OFFSET;
+                X_high[k][idx][0] =
+                    X_low[p][idx - 2][0] * alpha[0] -
+                    X_low[p][idx - 2][1] * alpha[1] +
+                    X_low[p][idx - 1][0] * alpha[2] -
+                    X_low[p][idx - 1][1] * alpha[3] +
+                    X_low[p][idx][0];
+                X_high[k][idx][1] =
+                    X_low[p][idx - 2][1] * alpha[0] +
+                    X_low[p][idx - 2][0] * alpha[1] +
+                    X_low[p][idx - 1][1] * alpha[2] +
+                    X_low[p][idx - 1][0] * alpha[3] +
+                    X_low[p][idx][1];
+            }
         }
     }
     if (k < sbr->m[1] + sbr->kx[1])
@@ -1367,8 +1411,8 @@ static int sbr_hf_gen(AACContext *ac, SpectralBandReplication *sbr,
 
 /// Generate the subband filtered lowband
 static int sbr_x_gen(SpectralBandReplication *sbr, float X[2][38][64],
-                     const float Y0[38][64][2], const float Y1[38][64][2],
-                     const float X_low[32][40][2], int ch)
+                     const float X_low[32][40][2], const float Y[2][38][64][2],
+                     int ch)
 {
     int k, i;
     const int i_f = 32;
@@ -1382,8 +1426,8 @@ static int sbr_x_gen(SpectralBandReplication *sbr, float X[2][38][64],
     }
     for (; k < sbr->kx[0] + sbr->m[0]; k++) {
         for (i = 0; i < i_Temp; i++) {
-            X[0][i][k] = Y0[i + i_f][k][0];
-            X[1][i][k] = Y0[i + i_f][k][1];
+            X[0][i][k] = Y[0][i + i_f][k][0];
+            X[1][i][k] = Y[0][i + i_f][k][1];
         }
     }
 
@@ -1395,8 +1439,8 @@ static int sbr_x_gen(SpectralBandReplication *sbr, float X[2][38][64],
     }
     for (; k < sbr->kx[1] + sbr->m[1]; k++) {
         for (i = i_Temp; i < i_f; i++) {
-            X[0][i][k] = Y1[i][k][0];
-            X[1][i][k] = Y1[i][k][1];
+            X[0][i][k] = Y[1][i][k][0];
+            X[1][i][k] = Y[1][i][k][1];
         }
     }
     return 0;
@@ -1405,7 +1449,7 @@ static int sbr_x_gen(SpectralBandReplication *sbr, float X[2][38][64],
 /** High Frequency Adjustment (14496-3 sp04 p217) and Mapping
  * (14496-3 sp04 p217)
  */
-static int sbr_mapping(AACContext *ac, SpectralBandReplication *sbr,
+static void sbr_mapping(AACContext *ac, SpectralBandReplication *sbr,
                         SBRData *ch_data, int e_a[2])
 {
     int e, i, m;
@@ -1416,12 +1460,7 @@ static int sbr_mapping(AACContext *ac, SpectralBandReplication *sbr,
         uint16_t *table = ch_data->bs_freq_res[e + 1] ? sbr->f_tablehigh : sbr->f_tablelow;
         int k;
 
-        if (sbr->kx[1] != table[0]) {
-            av_log(ac->avctx, AV_LOG_ERROR, "kx != f_table{high,low}[0]. "
-                   "Derived frequency tables were not regenerated.\n");
-            sbr_turnoff(sbr);
-            return AVERROR_BUG;
-        }
+        av_assert0(sbr->kx[1] <= table[0]);
         for (i = 0; i < ilim; i++)
             for (m = table[i]; m < table[i + 1]; m++)
                 sbr->e_origmapped[e][m - sbr->kx[1]] = ch_data->env_facs[e+1][i];
@@ -1456,15 +1495,13 @@ static int sbr_mapping(AACContext *ac, SpectralBandReplication *sbr,
     }
 
     memcpy(ch_data->s_indexmapped[0], ch_data->s_indexmapped[ch_data->bs_num_env], sizeof(ch_data->s_indexmapped[0]));
-    return 0;
 }
 
 /// Estimation of current envelope (14496-3 sp04 p218)
 static void sbr_env_estimate(float (*e_curr)[48], float X_high[64][40][2],
                              SpectralBandReplication *sbr, SBRData *ch_data)
 {
-    int e, m;
-    int kx1 = sbr->kx[1];
+    int e, i, m;
 
     if (sbr->bs_interpol_freq) {
         for (e = 0; e < ch_data->bs_num_env; e++) {
@@ -1473,7 +1510,12 @@ static void sbr_env_estimate(float (*e_curr)[48], float X_high[64][40][2],
             int iub = ch_data->t_env[e + 1] * 2 + ENVELOPE_ADJUSTMENT_OFFSET;
 
             for (m = 0; m < sbr->m[1]; m++) {
-                float sum = sbr->dsp.sum_square(X_high[m+kx1] + ilb, iub - ilb);
+                float sum = 0.0f;
+
+                for (i = ilb; i < iub; i++) {
+                    sum += X_high[m + sbr->kx[1]][i][0] * X_high[m + sbr->kx[1]][i][0] +
+                           X_high[m + sbr->kx[1]][i][1] * X_high[m + sbr->kx[1]][i][1];
+                }
                 e_curr[e][m] = sum * recip_env_size;
             }
         }
@@ -1491,11 +1533,14 @@ static void sbr_env_estimate(float (*e_curr)[48], float X_high[64][40][2],
                 const int den = env_size * (table[p + 1] - table[p]);
 
                 for (k = table[p]; k < table[p + 1]; k++) {
-                    sum += sbr->dsp.sum_square(X_high[k] + ilb, iub - ilb);
+                    for (i = ilb; i < iub; i++) {
+                        sum += X_high[k][i][0] * X_high[k][i][0] +
+                               X_high[k][i][1] * X_high[k][i][1];
+                    }
                 }
                 sum /= den;
                 for (k = table[p]; k < table[p + 1]; k++) {
-                    e_curr[e][k - kx1] = sum;
+                    e_curr[e][k - sbr->kx[1]] = sum;
                 }
             }
         }
@@ -1562,8 +1607,7 @@ static void sbr_gain_calc(AACContext *ac, SpectralBandReplication *sbr,
 }
 
 /// Assembling HF Signals (14496-3 sp04 p220)
-static void sbr_hf_assemble(float Y1[38][64][2],
-                            const float X_high[64][40][2],
+static void sbr_hf_assemble(float Y[2][38][64][2], const float X_high[64][40][2],
                             SpectralBandReplication *sbr, SBRData *ch_data,
                             const int e_a[2])
 {
@@ -1578,9 +1622,14 @@ static void sbr_hf_assemble(float Y1[38][64][2],
         0.11516383427084,
         0.03183050093751,
     };
+    static const int8_t phi[2][4] = {
+        {  1,  0, -1,  0}, // real
+        {  0,  1,  0, -1}, // imaginary
+    };
     float (*g_temp)[48] = ch_data->g_temp, (*q_temp)[48] = ch_data->q_temp;
     int indexnoise = ch_data->f_indexnoise;
     int indexsine  = ch_data->f_indexsine;
+    memcpy(Y[0], Y[1], sizeof(Y[0]));
 
     if (sbr->reset) {
         for (i = 0; i < h_SL; i++) {
@@ -1601,48 +1650,64 @@ static void sbr_hf_assemble(float Y1[38][64][2],
 
     for (e = 0; e < ch_data->bs_num_env; e++) {
         for (i = 2 * ch_data->t_env[e]; i < 2 * ch_data->t_env[e + 1]; i++) {
-            LOCAL_ALIGNED_16(float, g_filt_tab, [48]);
-            LOCAL_ALIGNED_16(float, q_filt_tab, [48]);
-            float *g_filt, *q_filt;
+            int phi_sign = (1 - 2*(kx & 1));
 
             if (h_SL && e != e_a[0] && e != e_a[1]) {
-                g_filt = g_filt_tab;
-                q_filt = q_filt_tab;
                 for (m = 0; m < m_max; m++) {
                     const int idx1 = i + h_SL;
-                    g_filt[m] = 0.0f;
-                    q_filt[m] = 0.0f;
-                    for (j = 0; j <= h_SL; j++) {
-                        g_filt[m] += g_temp[idx1 - j][m] * h_smooth[j];
-                        q_filt[m] += q_temp[idx1 - j][m] * h_smooth[j];
-                    }
+                    float g_filt = 0.0f;
+                    for (j = 0; j <= h_SL; j++)
+                        g_filt += g_temp[idx1 - j][m] * h_smooth[j];
+                    Y[1][i][m + kx][0] =
+                        X_high[m + kx][i + ENVELOPE_ADJUSTMENT_OFFSET][0] * g_filt;
+                    Y[1][i][m + kx][1] =
+                        X_high[m + kx][i + ENVELOPE_ADJUSTMENT_OFFSET][1] * g_filt;
                 }
             } else {
-                g_filt = g_temp[i + h_SL];
-                q_filt = q_temp[i];
+                for (m = 0; m < m_max; m++) {
+                    const float g_filt = g_temp[i + h_SL][m];
+                    Y[1][i][m + kx][0] =
+                        X_high[m + kx][i + ENVELOPE_ADJUSTMENT_OFFSET][0] * g_filt;
+                    Y[1][i][m + kx][1] =
+                        X_high[m + kx][i + ENVELOPE_ADJUSTMENT_OFFSET][1] * g_filt;
+                }
             }
-
-            sbr->dsp.hf_g_filt(Y1[i] + kx, X_high + kx, g_filt, m_max,
-                               i + ENVELOPE_ADJUSTMENT_OFFSET);
 
             if (e != e_a[0] && e != e_a[1]) {
-                sbr->dsp.hf_apply_noise[indexsine](Y1[i] + kx, sbr->s_m[e],
-                                                   q_filt, indexnoise,
-                                                   kx, m_max);
-            } else {
-                int idx = indexsine&1;
-                int A = (1-((indexsine+(kx & 1))&2));
-                int B = (A^(-idx)) + idx;
-                float *out = &Y1[i][kx][idx];
-                float *in  = sbr->s_m[e];
-                for (m = 0; m+1 < m_max; m+=2) {
-                    out[2*m  ] += in[m  ] * A;
-                    out[2*m+2] += in[m+1] * B;
+                for (m = 0; m < m_max; m++) {
+                    indexnoise = (indexnoise + 1) & 0x1ff;
+                    if (sbr->s_m[e][m]) {
+                        Y[1][i][m + kx][0] +=
+                            sbr->s_m[e][m] * phi[0][indexsine];
+                        Y[1][i][m + kx][1] +=
+                            sbr->s_m[e][m] * (phi[1][indexsine] * phi_sign);
+                    } else {
+                        float q_filt;
+                        if (h_SL) {
+                            const int idx1 = i + h_SL;
+                            q_filt = 0.0f;
+                            for (j = 0; j <= h_SL; j++)
+                                q_filt += q_temp[idx1 - j][m] * h_smooth[j];
+                        } else {
+                            q_filt = q_temp[i][m];
+                        }
+                        Y[1][i][m + kx][0] +=
+                            q_filt * sbr_noise_table[indexnoise][0];
+                        Y[1][i][m + kx][1] +=
+                            q_filt * sbr_noise_table[indexnoise][1];
+                    }
+                    phi_sign = -phi_sign;
                 }
-                if(m_max&1)
-                    out[2*m  ] += in[m  ] * A;
+            } else {
+                indexnoise = (indexnoise + m_max) & 0x1ff;
+                for (m = 0; m < m_max; m++) {
+                    Y[1][i][m + kx][0] +=
+                        sbr->s_m[e][m] * phi[0][indexsine];
+                    Y[1][i][m + kx][1] +=
+                        sbr->s_m[e][m] * (phi[1][indexsine] * phi_sign);
+                    phi_sign = -phi_sign;
+                }
             }
-            indexnoise = (indexnoise + m_max) & 0x1ff;
             indexsine = (indexsine + 1) & 3;
         }
     }
@@ -1653,54 +1718,39 @@ static void sbr_hf_assemble(float Y1[38][64][2],
 void ff_sbr_apply(AACContext *ac, SpectralBandReplication *sbr, int id_aac,
                   float* L, float* R)
 {
-    int downsampled = ac->oc[1].m4ac.ext_sample_rate < sbr->sample_rate;
+    int downsampled = ac->m4ac.ext_sample_rate < sbr->sample_rate;
     int ch;
     int nch = (id_aac == TYPE_CPE) ? 2 : 1;
-    int err;
-
-    if (!sbr->kx_and_m_pushed) {
-        sbr->kx[0] = sbr->kx[1];
-        sbr->m[0] = sbr->m[1];
-    } else {
-        sbr->kx_and_m_pushed = 0;
-    }
 
     if (sbr->start) {
         sbr_dequant(sbr, id_aac);
     }
     for (ch = 0; ch < nch; ch++) {
         /* decode channel */
-        sbr_qmf_analysis(&ac->dsp, &sbr->mdct_ana, &sbr->dsp, ch ? R : L, sbr->data[ch].analysis_filterbank_samples,
+        sbr_qmf_analysis(&ac->dsp, &sbr->mdct_ana, ch ? R : L, sbr->data[ch].analysis_filterbank_samples,
                          (float*)sbr->qmf_filter_scratch,
                          sbr->data[ch].W);
         sbr_lf_gen(ac, sbr, sbr->X_low, sbr->data[ch].W);
-        sbr->data[ch].Ypos ^= 1;
         if (sbr->start) {
-            sbr_hf_inverse_filter(&sbr->dsp, sbr->alpha0, sbr->alpha1, sbr->X_low, sbr->k[0]);
+            sbr_hf_inverse_filter(sbr->alpha0, sbr->alpha1, sbr->X_low, sbr->k[0]);
             sbr_chirp(sbr, &sbr->data[ch]);
             sbr_hf_gen(ac, sbr, sbr->X_high, sbr->X_low, sbr->alpha0, sbr->alpha1,
                        sbr->data[ch].bw_array, sbr->data[ch].t_env,
                        sbr->data[ch].bs_num_env);
 
             // hf_adj
-            err = sbr_mapping(ac, sbr, &sbr->data[ch], sbr->data[ch].e_a);
-            if (!err) {
-                sbr_env_estimate(sbr->e_curr, sbr->X_high, sbr, &sbr->data[ch]);
-                sbr_gain_calc(ac, sbr, &sbr->data[ch], sbr->data[ch].e_a);
-                sbr_hf_assemble(sbr->data[ch].Y[sbr->data[ch].Ypos],
-                                sbr->X_high, sbr, &sbr->data[ch],
-                                sbr->data[ch].e_a);
-            }
+            sbr_mapping(ac, sbr, &sbr->data[ch], sbr->data[ch].e_a);
+            sbr_env_estimate(sbr->e_curr, sbr->X_high, sbr, &sbr->data[ch]);
+            sbr_gain_calc(ac, sbr, &sbr->data[ch], sbr->data[ch].e_a);
+            sbr_hf_assemble(sbr->data[ch].Y, sbr->X_high, sbr, &sbr->data[ch],
+                            sbr->data[ch].e_a);
         }
 
         /* synthesis */
-        sbr_x_gen(sbr, sbr->X[ch],
-                  sbr->data[ch].Y[1-sbr->data[ch].Ypos],
-                  sbr->data[ch].Y[  sbr->data[ch].Ypos],
-                  sbr->X_low, ch);
+        sbr_x_gen(sbr, sbr->X[ch], sbr->X_low, sbr->data[ch].Y, ch);
     }
 
-    if (ac->oc[1].m4ac.ps == 1) {
+    if (ac->m4ac.ps == 1) {
         if (sbr->ps.start) {
             ff_ps_apply(ac->avctx, &sbr->ps, sbr->X[0], sbr->X[1], sbr->kx[1] + sbr->m[1]);
         } else {
@@ -1709,12 +1759,12 @@ void ff_sbr_apply(AACContext *ac, SpectralBandReplication *sbr, int id_aac,
         nch = 2;
     }
 
-    sbr_qmf_synthesis(&ac->dsp, &sbr->mdct, &sbr->dsp, L, sbr->X[0], sbr->qmf_filter_scratch,
+    sbr_qmf_synthesis(&ac->dsp, &sbr->mdct, L, sbr->X[0], sbr->qmf_filter_scratch,
                       sbr->data[0].synthesis_filterbank_samples,
                       &sbr->data[0].synthesis_filterbank_samples_offset,
                       downsampled);
     if (nch == 2)
-        sbr_qmf_synthesis(&ac->dsp, &sbr->mdct, &sbr->dsp, R, sbr->X[1], sbr->qmf_filter_scratch,
+        sbr_qmf_synthesis(&ac->dsp, &sbr->mdct, R, sbr->X[1], sbr->qmf_filter_scratch,
                           sbr->data[1].synthesis_filterbank_samples,
                           &sbr->data[1].synthesis_filterbank_samples_offset,
                           downsampled);

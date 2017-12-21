@@ -29,7 +29,6 @@
 
 #if defined(_WIN32) && !defined(__MINGW32CE__)
 #include <windows.h>
-#include <share.h>
 
 #undef open
 int ff_win32_open(const char *filename_utf8, int oflag, int pmode)
@@ -45,12 +44,12 @@ int ff_win32_open(const char *filename_utf8, int oflag, int pmode)
     filename_w = av_mallocz(sizeof(wchar_t) * num_chars);
     MultiByteToWideChar(CP_UTF8, 0, filename_utf8, -1, filename_w, num_chars);
 
-    fd = _wsopen(filename_w, oflag, SH_DENYNO, pmode);
+    fd = _wopen(filename_w, oflag, pmode);
     av_freep(&filename_w);
 
     /* filename maybe be in CP_ACP */
     if (fd == -1 && !(oflag & O_CREAT))
-        return _sopen(filename_utf8, oflag, SH_DENYNO, pmode);
+        return open(filename_utf8, oflag, pmode);
 
     return fd;
 }
@@ -206,7 +205,6 @@ int ff_getnameinfo(const struct sockaddr *sa, int salen,
         return EAI_NONAME;
 
     if (host && hostlen > 0) {
-    #ifndef GEKKO
         struct hostent *ent = NULL;
         uint32_t a;
         if (!(flags & NI_NUMERICHOST))
@@ -223,17 +221,9 @@ int ff_getnameinfo(const struct sockaddr *sa, int salen,
                      ((a >> 24) & 0xff), ((a >> 16) & 0xff),
                      ((a >>  8) & 0xff), ( a        & 0xff));
         }
-    #else
-        uint32_t a;
-        a = ntohl(sin->sin_addr.s_addr);
-        snprintf(host, hostlen, "%d.%d.%d.%d",
-                 ((a >> 24) & 0xff), ((a >> 16) & 0xff),
-                 ((a >>  8) & 0xff), ( a        & 0xff));
-    #endif
     }
 
     if (serv && servlen > 0) {
-    #ifndef GEKKO
         struct servent *ent = NULL;
         if (!(flags & NI_NUMERICSERV))
             ent = getservbyport(sin->sin_port, flags & NI_DGRAM ? "udp" : "tcp");
@@ -241,7 +231,6 @@ int ff_getnameinfo(const struct sockaddr *sa, int salen,
         if (ent) {
             snprintf(serv, servlen, "%s", ent->s_name);
         } else
-    #endif
             snprintf(serv, servlen, "%d", ntohs(sin->sin_port));
     }
 
@@ -272,7 +261,6 @@ int ff_socket_nonblock(int socket, int enable)
 #endif
 }
 
-#ifndef GEKKO
 #if !HAVE_POLL_H
 int poll(struct pollfd *fds, nfds_t numfds, int timeout)
 {
@@ -341,5 +329,4 @@ int poll(struct pollfd *fds, nfds_t numfds, int timeout)
     return rc;
 }
 #endif /* HAVE_POLL_H */
-#endif /* GEKKO */
 #endif /* CONFIG_NETWORK */

@@ -58,7 +58,7 @@ static int lmlm4_probe(AVProbeData * pd) {
     return 0;
 }
 
-static int lmlm4_read_header(AVFormatContext *s) {
+static int lmlm4_read_header(AVFormatContext *s, AVFormatParameters *ap) {
     AVStream *st;
 
     if (!(st = avformat_new_stream(s, NULL)))

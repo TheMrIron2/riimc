@@ -89,7 +89,6 @@ typedef struct Indeo3DecodeContext {
     const uint8_t   *next_cell_data;
     const uint8_t   *last_byte;
     const int8_t    *mc_vectors;
-    unsigned        num_vectors;    ///< number of motion vectors in mc_vectors
 
     int16_t         width, height;
     uint32_t        frame_num;      ///< current frame number (zero-based)
@@ -148,10 +147,13 @@ static av_cold void build_requant_tab(void)
 
 
 static av_cold int allocate_frame_buffers(Indeo3DecodeContext *ctx,
-                                          AVCodecContext *avctx, int luma_width, int luma_height)
+                                          AVCodecContext *avctx)
 {
-    int p, chroma_width, chroma_height;
+    int p, luma_width, luma_height, chroma_width, chroma_height;
     int luma_pitch, chroma_pitch, luma_size, chroma_size;
+
+    luma_width  = ctx->width;
+    luma_height = ctx->height;
 
     if (luma_width  < 16 || luma_width  > 640 ||
         luma_height < 16 || luma_height > 480 ||
@@ -160,9 +162,6 @@ static av_cold int allocate_frame_buffers(Indeo3DecodeContext *ctx,
                luma_width, luma_height);
         return AVERROR_INVALIDDATA;
     }
-
-    ctx->width  = luma_width ;
-    ctx->height = luma_height;
 
     chroma_width  = FFALIGN(luma_width  >> 2, 4);
     chroma_height = FFALIGN(luma_height >> 2, 4);
@@ -194,8 +193,6 @@ static av_cold int allocate_frame_buffers(Indeo3DecodeContext *ctx,
         /* set buffer pointers = buf_ptr + pitch and thus skip the INTRA prediction line */
         ctx->planes[p].pixels[0] = ctx->planes[p].buffers[0] + ctx->planes[p].pitch;
         ctx->planes[p].pixels[1] = ctx->planes[p].buffers[1] + ctx->planes[p].pitch;
-        memset(ctx->planes[p].pixels[0], 0, ctx->planes[p].pitch * ctx->planes[p].height);
-        memset(ctx->planes[p].pixels[1], 0, ctx->planes[p].pitch * ctx->planes[p].height);
     }
 
     return 0;
@@ -206,13 +203,9 @@ static av_cold void free_frame_buffers(Indeo3DecodeContext *ctx)
 {
     int p;
 
-    ctx->width=
-    ctx->height= 0;
-
     for (p = 0; p < 3; p++) {
         av_freep(&ctx->planes[p].buffers[0]);
         av_freep(&ctx->planes[p].buffers[1]);
-        ctx->planes[p].pixels[0] = ctx->planes[p].pixels[1] = 0;
     }
 }
 
@@ -353,10 +346,8 @@ if (*data_ptr >= last_ptr) \
         fill_64(dst, pix64, num_lines << 1, row_offset)
 
 #define APPLY_DELTA_4 \
-    AV_WN16A(dst + line_offset    ,\
-             (AV_RN16A(ref    ) + delta_tab->deltas[dyad1]) & 0x7F7F);\
-    AV_WN16A(dst + line_offset + 2,\
-             (AV_RN16A(ref + 2) + delta_tab->deltas[dyad2]) & 0x7F7F);\
+    AV_WN16A(dst + line_offset    , AV_RN16A(ref    ) + delta_tab->deltas[dyad1]);\
+    AV_WN16A(dst + line_offset + 2, AV_RN16A(ref + 2) + delta_tab->deltas[dyad2]);\
     if (mode >= 3) {\
         if (is_top_of_cell && !cell->ypos) {\
             AV_COPY32(dst, dst + row_offset);\
@@ -369,14 +360,14 @@ if (*data_ptr >= last_ptr) \
     /* apply two 32-bit VQ deltas to next even line */\
     if (is_top_of_cell) { \
         AV_WN32A(dst + row_offset    , \
-                 (replicate32(AV_RN32A(ref    )) + delta_tab->deltas_m10[dyad1]) & 0x7F7F7F7F);\
+                 replicate32(AV_RN32A(ref    )) + delta_tab->deltas_m10[dyad1]);\
         AV_WN32A(dst + row_offset + 4, \
-                 (replicate32(AV_RN32A(ref + 4)) + delta_tab->deltas_m10[dyad2]) & 0x7F7F7F7F);\
+                 replicate32(AV_RN32A(ref + 4)) + delta_tab->deltas_m10[dyad2]);\
     } else { \
         AV_WN32A(dst + row_offset    , \
-                 (AV_RN32A(ref    ) + delta_tab->deltas_m10[dyad1]) & 0x7F7F7F7F);\
+                 AV_RN32A(ref    ) + delta_tab->deltas_m10[dyad1]);\
         AV_WN32A(dst + row_offset + 4, \
-                 (AV_RN32A(ref + 4) + delta_tab->deltas_m10[dyad2]) & 0x7F7F7F7F);\
+                 AV_RN32A(ref + 4) + delta_tab->deltas_m10[dyad2]);\
     } \
     /* odd lines are not coded but rather interpolated/replicated */\
     /* first line of the cell on the top of image? - replicate */\
@@ -390,22 +381,22 @@ if (*data_ptr >= last_ptr) \
 #define APPLY_DELTA_1011_INTER \
     if (mode == 10) { \
         AV_WN32A(dst                 , \
-                 (AV_RN32A(dst                 ) + delta_tab->deltas_m10[dyad1]) & 0x7F7F7F7F);\
+                 AV_RN32A(dst                 ) + delta_tab->deltas_m10[dyad1]);\
         AV_WN32A(dst + 4             , \
-                 (AV_RN32A(dst + 4             ) + delta_tab->deltas_m10[dyad2]) & 0x7F7F7F7F);\
+                 AV_RN32A(dst + 4             ) + delta_tab->deltas_m10[dyad2]);\
         AV_WN32A(dst + row_offset    , \
-                 (AV_RN32A(dst + row_offset    ) + delta_tab->deltas_m10[dyad1]) & 0x7F7F7F7F);\
+                 AV_RN32A(dst + row_offset    ) + delta_tab->deltas_m10[dyad1]);\
         AV_WN32A(dst + row_offset + 4, \
-                 (AV_RN32A(dst + row_offset + 4) + delta_tab->deltas_m10[dyad2]) & 0x7F7F7F7F);\
+                 AV_RN32A(dst + row_offset + 4) + delta_tab->deltas_m10[dyad2]);\
     } else { \
         AV_WN16A(dst                 , \
-                 (AV_RN16A(dst                 ) + delta_tab->deltas[dyad1]) & 0x7F7F);\
+                 AV_RN16A(dst                 ) + delta_tab->deltas[dyad1]);\
         AV_WN16A(dst + 2             , \
-                 (AV_RN16A(dst + 2             ) + delta_tab->deltas[dyad2]) & 0x7F7F);\
+                 AV_RN16A(dst + 2             ) + delta_tab->deltas[dyad2]);\
         AV_WN16A(dst + row_offset    , \
-                 (AV_RN16A(dst + row_offset    ) + delta_tab->deltas[dyad1]) & 0x7F7F);\
+                 AV_RN16A(dst + row_offset    ) + delta_tab->deltas[dyad1]);\
         AV_WN16A(dst + row_offset + 2, \
-                 (AV_RN16A(dst + row_offset + 2) + delta_tab->deltas[dyad2]) & 0x7F7F);\
+                 AV_RN16A(dst + row_offset + 2) + delta_tab->deltas[dyad2]);\
     }
 
 
@@ -427,8 +418,8 @@ static int decode_cell_data(Cell *cell, uint8_t *block, uint8_t *ref_block,
     blk_row_offset = (row_offset << (2 + v_zoom)) - (cell->width << 2);
     line_offset    = v_zoom ? row_offset : 0;
 
-    for (y = 0; y + v_zoom < cell->height; is_first_row = 0, y += 1 + v_zoom) {
-        for (x = 0; x + h_zoom < cell->width; x += 1 + h_zoom) {
+    for (y = 0; y < cell->height; is_first_row = 0, y += 1 + v_zoom) {
+        for (x = 0; x < cell->width; x += 1 + h_zoom) {
             ref = ref_block;
             dst = block;
 
@@ -581,19 +572,6 @@ static int decode_cell(Indeo3DecodeContext *ctx, AVCodecContext *avctx,
     /* setup output and reference pointers */
     offset = (cell->ypos << 2) * plane->pitch + (cell->xpos << 2);
     block  =  plane->pixels[ctx->buf_sel] + offset;
-
-    if (cell->mv_ptr) {
-        mv_y      = cell->mv_ptr[0];
-        mv_x      = cell->mv_ptr[1];
-        if (   mv_x + 4*cell->xpos < 0
-            || mv_y + 4*cell->ypos < 0
-            || mv_x + 4*cell->xpos + 4*cell->width  > plane->width
-            || mv_y + 4*cell->ypos + 4*cell->height > plane->height) {
-            av_log(avctx, AV_LOG_ERROR, "motion vector %d %d outside reference\n", mv_x + 4*cell->xpos, mv_y + 4*cell->ypos);
-            return AVERROR_INVALIDDATA;
-        }
-    }
-
     if (!cell->mv_ptr) {
         /* use previous line as reference for INTRA cells */
         ref_block = block - plane->pitch;
@@ -636,7 +614,7 @@ static int decode_cell(Indeo3DecodeContext *ctx, AVCodecContext *avctx,
     /* of the predicted cell in order to avoid overflows. */
     if (vq_index >= 8 && ref_block) {
         for (x = 0; x < cell->width << 2; x++)
-            ref_block[x] = requant_tab[vq_index & 7][ref_block[x] & 127];
+            ref_block[x] = requant_tab[vq_index & 7][ref_block[x]];
     }
 
     error = IV3_NOERR;
@@ -737,7 +715,6 @@ static int parse_bintree(Indeo3DecodeContext *ctx, AVCodecContext *avctx,
 {
     Cell    curr_cell;
     int     bytes_used;
-    int mv_x, mv_y;
 
     if (depth <= 0) {
         av_log(avctx, AV_LOG_ERROR, "Stack overflow (corrupted binary tree)!\n");
@@ -749,8 +726,6 @@ static int parse_bintree(Indeo3DecodeContext *ctx, AVCodecContext *avctx,
         SPLIT_CELL(ref_cell->height, curr_cell.height);
         ref_cell->ypos   += curr_cell.height;
         ref_cell->height -= curr_cell.height;
-        if (ref_cell->height <= 0 || curr_cell.height <= 0)
-            return AVERROR_INVALIDDATA;
     } else if (code == V_SPLIT) {
         if (curr_cell.width > strip_width) {
             /* split strip */
@@ -759,8 +734,6 @@ static int parse_bintree(Indeo3DecodeContext *ctx, AVCodecContext *avctx,
             SPLIT_CELL(ref_cell->width, curr_cell.width);
         ref_cell->xpos  += curr_cell.width;
         ref_cell->width -= curr_cell.width;
-        if (ref_cell->width <= 0 || curr_cell.width <= 0)
-            return AVERROR_INVALIDDATA;
     }
 
     while (get_bits_left(&ctx->gb) >= 2) { /* loop until return */
@@ -788,37 +761,17 @@ static int parse_bintree(Indeo3DecodeContext *ctx, AVCodecContext *avctx,
                 CHECK_CELL
                 if (!curr_cell.mv_ptr)
                     return AVERROR_INVALIDDATA;
-
-                mv_y = curr_cell.mv_ptr[0];
-                mv_x = curr_cell.mv_ptr[1];
-                if (   mv_x + 4*curr_cell.xpos < 0
-                    || mv_y + 4*curr_cell.ypos < 0
-                    || mv_x + 4*curr_cell.xpos + 4*curr_cell.width  > plane->width
-                    || mv_y + 4*curr_cell.ypos + 4*curr_cell.height > plane->height) {
-                    av_log(avctx, AV_LOG_ERROR, "motion vector %d %d outside reference\n", mv_x + 4*curr_cell.xpos, mv_y + 4*curr_cell.ypos);
-                    return AVERROR_INVALIDDATA;
-                }
-
                 copy_cell(ctx, plane, &curr_cell);
                 return 0;
             }
             break;
         case INTER_DATA:
             if (!curr_cell.tree) { /* MC tree INTER code */
-                unsigned mv_idx;
                 /* get motion vector index and setup the pointer to the mv set */
                 if (!ctx->need_resync)
                     ctx->next_cell_data = &ctx->gb.buffer[(get_bits_count(&ctx->gb) + 7) >> 3];
-                if (ctx->next_cell_data >= ctx->last_byte) {
-                    av_log(avctx, AV_LOG_ERROR, "motion vector out of array\n");
-                    return AVERROR_INVALIDDATA;
-                }
-                mv_idx = *(ctx->next_cell_data++);
-                if (mv_idx >= ctx->num_vectors) {
-                    av_log(avctx, AV_LOG_ERROR, "motion vector index out of range\n");
-                    return AVERROR_INVALIDDATA;
-                }
-                curr_cell.mv_ptr = &ctx->mc_vectors[mv_idx << 1];
+                if(ctx->mc_vectors)
+                    curr_cell.mv_ptr = &ctx->mc_vectors[*(ctx->next_cell_data++) << 1];
                 curr_cell.tree   = 1; /* enter the VQ tree */
                 UPDATE_BITPOS(8);
             } else { /* VQ tree DATA code */
@@ -848,28 +801,23 @@ static int decode_plane(Indeo3DecodeContext *ctx, AVCodecContext *avctx,
                         int32_t strip_width)
 {
     Cell            curr_cell;
-    unsigned        num_vectors;
+    uint32_t        num_vectors;
 
     /* each plane data starts with mc_vector_count field, */
     /* an optional array of motion vectors followed by the vq data */
-    num_vectors = bytestream_get_le32(&data); data_size -= 4;
-    if (num_vectors > 256) {
-        av_log(ctx->avctx, AV_LOG_ERROR,
-               "Read invalid number of motion vectors %d\n", num_vectors);
+    num_vectors = bytestream_get_le32(&data);
+    if(num_vectors >= data_size/2)
         return AVERROR_INVALIDDATA;
-    }
-    if (num_vectors * 2 > data_size)
-        return AVERROR_INVALIDDATA;
-
-    ctx->num_vectors = num_vectors;
     ctx->mc_vectors  = num_vectors ? data : 0;
+    data     += num_vectors * 2;
+    data_size-= num_vectors * 2;
 
     /* init the bitreader */
-    init_get_bits(&ctx->gb, &data[num_vectors * 2], (data_size - num_vectors * 2) << 3);
+    init_get_bits(&ctx->gb, data, data_size << 3);
     ctx->skip_bits   = 0;
     ctx->need_resync = 0;
 
-    ctx->last_byte = data + data_size;
+    ctx->last_byte = data + data_size - 1;
 
     /* initialize the 1st cell and set its dimensions to whole plane */
     curr_cell.xpos   = curr_cell.ypos = 0;
@@ -906,7 +854,6 @@ static int decode_frame_headers(Indeo3DecodeContext *ctx, AVCodecContext *avctx,
 
     /* parse the bitstream header */
     bs_hdr = buf_ptr;
-    buf_size -= 16;
 
     if (bytestream_get_le16(&buf_ptr) != 32) {
         av_log(avctx, AV_LOG_ERROR, "Unsupported codec version!\n");
@@ -932,20 +879,14 @@ static int decode_frame_headers(Indeo3DecodeContext *ctx, AVCodecContext *avctx,
         return AVERROR_INVALIDDATA;
 
     if (width != ctx->width || height != ctx->height) {
-        int res;
-
         av_dlog(avctx, "Frame dimensions changed!\n");
 
-        if (width  < 16 || width  > 640 ||
-            height < 16 || height > 480 ||
-            width  &  3 || height &   3) {
-            av_log(avctx, AV_LOG_ERROR,
-                   "Invalid picture dimensions: %d x %d!\n", width, height);
-            return AVERROR_INVALIDDATA;
-        }
+        ctx->width  = width;
+        ctx->height = height;
+
         free_frame_buffers(ctx);
-        if ((res = allocate_frame_buffers(ctx, avctx, width, height)) < 0)
-             return res;
+        if(allocate_frame_buffers(ctx, avctx) < 0)
+            return AVERROR_INVALIDDATA;
         avcodec_set_dimensions(avctx, width, height);
     }
 
@@ -1036,14 +977,16 @@ static av_cold int decode_init(AVCodecContext *avctx)
     Indeo3DecodeContext *ctx = avctx->priv_data;
 
     ctx->avctx     = avctx;
+    ctx->width     = avctx->width;
+    ctx->height    = avctx->height;
     avctx->pix_fmt = PIX_FMT_YUV410P;
     avcodec_get_frame_defaults(&ctx->frame);
 
     build_requant_tab();
 
-    ff_dsputil_init(&ctx->dsp, avctx);
+    dsputil_init(&ctx->dsp, avctx);
 
-    return allocate_frame_buffers(ctx, avctx, avctx->width, avctx->height);
+    return allocate_frame_buffers(ctx, avctx);
 }
 
 

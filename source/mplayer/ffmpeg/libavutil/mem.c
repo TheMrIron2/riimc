@@ -61,16 +61,11 @@ void  free(void *ptr);
 
 #define ALIGN (HAVE_AVX ? 32 : 16)
 
-/* NOTE: if you want to override these functions with your own
- * implementations (not recommended) you have to link libav* as
- * dynamic libraries and remove -Wl,-Bsymbolic from the linker flags.
- * Note that this will cost performance. */
+/* You can redefine av_malloc and av_free in your project to use your
+   memory allocator. You do not need to suppress this file because the
+   linker will do it automatically. */
 
-static size_t max_alloc_size= INT_MAX;
-
-void av_max_alloc(size_t max){
-    max_alloc_size = max;
-}
+#define MAX_MALLOC_SIZE INT_MAX
 
 void *av_malloc(size_t size)
 {
@@ -80,7 +75,7 @@ void *av_malloc(size_t size)
 #endif
 
     /* let's disallow possible ambiguous cases */
-    if (size > (max_alloc_size-32))
+    if (size > (MAX_MALLOC_SIZE-32))
         return NULL;
 
 #if CONFIG_MEMALIGN_HACK
@@ -95,11 +90,7 @@ void *av_malloc(size_t size)
     if (posix_memalign(&ptr,ALIGN,size))
         ptr = NULL;
 #elif HAVE_MEMALIGN
-#ifdef GEKKO
-    ptr = memalign(32,size);
-#else
-	ptr = memalign(ALIGN,size);
-#endif
+    ptr = memalign(ALIGN,size);
     /* Why 64?
        Indeed, we should align it:
          on 4 for 386
@@ -139,7 +130,7 @@ void *av_realloc(void *ptr, size_t size)
 #endif
 
     /* let's disallow possible ambiguous cases */
-    if (size > (max_alloc_size-32))
+    if (size > (MAX_MALLOC_SIZE-16))
         return NULL;
 
 #if CONFIG_MEMALIGN_HACK
@@ -233,4 +224,3 @@ void av_dynarray_add(void *tab_ptr, int *nb_ptr, void *elem)
     tab[nb++] = (intptr_t)elem;
     *nb_ptr = nb;
 }
-

@@ -99,7 +99,6 @@ int ff_wms_parse_sdp_a_line(AVFormatContext *s, const char *p)
     if (av_strstart(p, "pgmpu:data:application/vnd.ms.wms-hdr.asfv1;base64,", &p)) {
         AVIOContext pb;
         RTSPState *rt = s->priv_data;
-        AVDictionary *opts = NULL;
         int len = strlen(p) * 6 / 8;
         char *buf = av_mallocz(len);
         av_base64_decode(buf, p, len);
@@ -109,14 +108,13 @@ int ff_wms_parse_sdp_a_line(AVFormatContext *s, const char *p)
                    "Failed to fix invalid RTSP-MS/ASF min_pktsize\n");
         init_packetizer(&pb, buf, len);
         if (rt->asf_ctx) {
-            avformat_close_input(&rt->asf_ctx);
+            av_close_input_file(rt->asf_ctx);
+            rt->asf_ctx = NULL;
         }
         if (!(rt->asf_ctx = avformat_alloc_context()))
             return AVERROR(ENOMEM);
         rt->asf_ctx->pb      = &pb;
-        av_dict_set(&opts, "no_resync_search", "1", 0);
-        ret = avformat_open_input(&rt->asf_ctx, "", &ff_asf_demuxer, &opts);
-        av_dict_free(&opts);
+        ret = avformat_open_input(&rt->asf_ctx, "", &ff_asf_demuxer, NULL);
         if (ret < 0)
             return ret;
         av_dict_copy(&s->metadata, rt->asf_ctx->metadata, 0);
@@ -130,8 +128,6 @@ int ff_wms_parse_sdp_a_line(AVFormatContext *s, const char *p)
 static int asfrtp_parse_sdp_line(AVFormatContext *s, int stream_index,
                                  PayloadContext *asf, const char *line)
 {
-    if (stream_index < 0)
-        return 0;
     if (av_strstart(line, "stream:", &line)) {
         RTSPState *rt = s->priv_data;
 
@@ -261,7 +257,7 @@ static int asfrtp_parse_packet(AVFormatContext *s, PayloadContext *asf,
     for (;;) {
         int i;
 
-        res = ff_read_packet(rt->asf_ctx, pkt);
+        res = av_read_packet(rt->asf_ctx, pkt);
         rt->asf_pb_pos = avio_tell(pb);
         if (res != 0)
             break;

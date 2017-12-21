@@ -26,14 +26,11 @@
 
 #include "avfilter.h"
 #include "avfiltergraph.h"
-#include "formats.h"
 
 #define POOL_SIZE 32
 typedef struct AVFilterPool {
     AVFilterBufferRef *pic[POOL_SIZE];
     int count;
-    int refcount;
-    int draining;
 } AVFilterPool;
 
 typedef struct AVFilterCommand {
@@ -66,28 +63,11 @@ int ff_avfilter_graph_config_links(AVFilterGraph *graphctx, AVClass *log_ctx);
  */
 int ff_avfilter_graph_config_formats(AVFilterGraph *graphctx, AVClass *log_ctx);
 
-/**
- * Update the position of a link in the age heap.
- */
-void ff_avfilter_graph_update_heap(AVFilterGraph *graph, AVFilterLink *link);
-
 /** default handler for freeing audio/video buffer when there are no references left */
 void ff_avfilter_default_free_buffer(AVFilterBuffer *buf);
 
 /** Tell is a format is contained in the provided list terminated by -1. */
 int ff_fmt_is_in(int fmt, const int *fmts);
-
-/**
- * Return a copy of a list of integers terminated by -1, or NULL in
- * case of copy failure.
- */
-int *ff_copy_int_list(const int * const list);
-
-/**
- * Return a copy of a list of 64-bit integers, or NULL in case of
- * copy failure.
- */
-int64_t *ff_copy_int64_list(const int64_t * const list);
 
 /* Functions to parse audio format arguments */
 
@@ -112,16 +92,6 @@ int ff_parse_pixel_format(enum PixelFormat *ret, const char *arg, void *log_ctx)
 int ff_parse_sample_rate(int *ret, const char *arg, void *log_ctx);
 
 /**
- * Parse a time base.
- *
- * @param ret unsigned AVRational pointer to where the value should be written
- * @param arg string to parse
- * @param log_ctx log context
- * @return 0 in case of success, a negative AVERROR code on error
- */
-int ff_parse_time_base(AVRational *ret, const char *arg, void *log_ctx);
-
-/**
  * Parse a sample format name or a corresponding integer representation.
  *
  * @param ret integer pointer to where the value should be written
@@ -142,22 +112,13 @@ int ff_parse_sample_format(int *ret, const char *arg, void *log_ctx);
 int ff_parse_channel_layout(int64_t *ret, const char *arg, void *log_ctx);
 
 /**
- * Pass video frame along and keep an internal reference for later use.
+ * Parse a packing format or a corresponding integer representation.
+ *
+ * @param ret integer pointer to where the value should be written
+ * @param arg string to parse
+ * @param log_ctx log context
+ * @return 0 in case of success, a negative AVERROR code on error
  */
-static inline void ff_null_start_frame_keep_ref(AVFilterLink *inlink,
-                                                AVFilterBufferRef *picref)
-{
-    avfilter_start_frame(inlink->dst->outputs[0], avfilter_ref_buffer(picref, ~0));
-}
-
-void ff_update_link_current_pts(AVFilterLink *link, int64_t pts);
-
-void ff_free_pool(AVFilterPool *pool);
-
-void ff_command_queue_pop(AVFilterContext *filter);
-
-#define FF_DPRINTF_START(ctx, func) av_dlog(NULL, "%-16s: ", #func)
-
-void ff_dlog_link(void *ctx, AVFilterLink *link, int end);
+int ff_parse_packing_format(int *ret, const char *arg, void *log_ctx);
 
 #endif /* AVFILTER_INTERNAL_H */

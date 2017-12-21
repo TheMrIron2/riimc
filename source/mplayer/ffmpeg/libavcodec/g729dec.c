@@ -333,12 +333,12 @@ static int16_t g729d_voice_decision(int onset, int prev_voice_decision, const in
     return voice_decision;
 }
 
-static int32_t scalarproduct_int16_c(const int16_t * v1, const int16_t * v2, int order)
+static int32_t scalarproduct_int16_c(const int16_t * v1, const int16_t * v2, int order, int shift)
 {
     int res = 0;
 
     while (order--)
-        res += *v1++ * *v2++;
+        res += (*v1++ * *v2++) >> shift;
 
     return res;
 }
@@ -371,8 +371,6 @@ static av_cold int decoder_init(AVCodecContext * avctx)
 
     ctx->exc = &ctx->exc_base[PITCH_DELAY_MAX+INTERPOL_LEN];
 
-    ctx->pitch_delay_int_prev = PITCH_DELAY_MIN;
-
     /* random seed initialization */
     ctx->rand_value = 21845;
 
@@ -380,7 +378,7 @@ static av_cold int decoder_init(AVCodecContext * avctx)
     for(i=0; i<4; i++)
         ctx->quant_energy[i] = -14336; // -14 in (5.10)
 
-    ff_dsputil_init(&ctx->dsp, avctx);
+    dsputil_init(&ctx->dsp, avctx);
     ctx->dsp.scalarproduct_int16 = scalarproduct_int16_c;
 
     avcodec_get_frame_defaults(&ctx->frame);
@@ -422,7 +420,7 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame_ptr,
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return ret;
     }
-    out_frame = (int16_t*) ctx->frame.data[0];
+    out_frame= ctx->frame.data[0];
 
     if (buf_size == 10) {
         packet_type = FORMAT_G729_8K;
@@ -624,7 +622,7 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame_ptr,
             1,
             0,
             0x800))
-            /* Overflow occurred, downscale excitation signal... */
+            /* Overflow occured, downscale excitation signal... */
             for (j = 0; j < 2 * SUBFRAME_SIZE + PITCH_DELAY_MAX + INTERPOL_LEN; j++)
                 ctx->exc_base[j] >>= 2;
 
@@ -716,12 +714,14 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame_ptr,
 
 AVCodec ff_g729_decoder =
 {
-    .name           = "g729",
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = CODEC_ID_G729,
-    .priv_data_size = sizeof(G729Context),
-    .init           = decoder_init,
-    .decode         = decode_frame,
+    "g729",
+    AVMEDIA_TYPE_AUDIO,
+    CODEC_ID_G729,
+    sizeof(G729Context),
+    decoder_init,
+    NULL,
+    NULL,
+    decode_frame,
     .capabilities = CODEC_CAP_DR1,
     .long_name = NULL_IF_CONFIG_SMALL("G.729"),
 };
