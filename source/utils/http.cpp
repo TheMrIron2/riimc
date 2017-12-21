@@ -40,13 +40,13 @@ extern "C" {
 #include "mplayer/stream/url.h"
 }
 
-#define TCP_CONNECT_TIMEOUT 	13  // 13 secs to make a connection
+#define TCP_CONNECT_TIMEOUT 	10  // 10 secs to make a connection
 #define TCP_SEND_SIZE 			(32 * 1024)
 #define TCP_RECV_SIZE 			(32 * 1024)
 #define TCP_BLOCK_RECV_TIMEOUT 	15000 // 15 secs to receive
 #define TCP_BLOCK_SEND_TIMEOUT 	15000 // 15 secs to send
 #define TCP_BLOCK_SIZE 			2048
-#define HTTP_TIMEOUT 			35000 // 35 secs to get an http response
+#define HTTP_TIMEOUT 			20000 // 20 secs to get an http response
 #define IOS_O_NONBLOCK			0x04
 
 static int _httoi(const char *value)
