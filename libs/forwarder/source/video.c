@@ -133,19 +133,19 @@ InitVideo ()
 
 	if (CONF_GetAspectRatio() == CONF_ASPECT_16_9)
 	{
-		vmode->fbWidth = 640;
-		vmode->efbHeight = 456;
-		vmode->viWidth = 686;
+		vmode->fbWidth = 720;
+		vmode->efbHeight = 480;
+		vmode->viWidth = 720;
 
 		if (pal)
 		{
-			vmode->xfbHeight = 542;
-			vmode->viHeight = 542;
+			vmode->xfbHeight = 512;
+			vmode->viHeight = 512;
 		}
 		else
 		{
-			vmode->xfbHeight = 456;
-			vmode->viHeight = 456;
+			vmode->xfbHeight = 480;
+			vmode->viHeight = 480;
 		}
 	}
 	else
@@ -153,7 +153,7 @@ InitVideo ()
 		if (pal)
 			vmode = &TVPal574IntDfScale;
 
-		vmode->viWidth = 672;
+		vmode->viWidth = 704;
 	}
 
 	if (pal)
