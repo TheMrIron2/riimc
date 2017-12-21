@@ -19,6 +19,8 @@
 #ifndef MPLAYER_MPLAYER_H
 #define MPLAYER_MPLAYER_H
 
+#include "../defines.h"
+
 extern char  *filename;
 extern char  *current_module;
 extern char **audio_fm_list;

@@ -6,6 +6,7 @@
  * Settings save/load to XML file
  ***************************************************************************/
 
+#include "defines.h"
 #include "networkop.h"
 
 enum {

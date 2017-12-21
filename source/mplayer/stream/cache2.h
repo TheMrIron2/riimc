@@ -19,6 +19,7 @@
 #ifndef MPLAYER_CACHE2_H
 #define MPLAYER_CACHE2_H
 
+#include "../../defines.h"
 #include "stream.h"
 
 extern float cache_fill_status;

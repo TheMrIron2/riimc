@@ -12,6 +12,7 @@
 
 #include <unistd.h>
 #include <gccore.h>
+#include "defines.h"
 
 #define MAXJOLIET			255
 
