@@ -517,7 +517,7 @@ int BrowserChangeFolder(bool updateDir, bool waitParse)
 	int i;
 	char tmp[200];
 
-void* fart=NULL; //todo: wtf is the type declaration for part[][]???
+void fart=NULL; //todo: wtf is the type declaration for part[][]???
 
     if(isInserted[DEVICE_SD])
     {
