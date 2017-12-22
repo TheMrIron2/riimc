@@ -18,8 +18,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-// avocado.h
-
 #ifndef AVCODEC_AVCODEC_H
 #define AVCODEC_AVCODEC_H
 
@@ -36,6 +34,7 @@
 #include "libavutil/log.h"
 #include "libavutil/pixfmt.h"
 #include "libavutil/rational.h"
+
 #include "libavcodec/version.h"
 /**
  * @defgroup libavc Encoding/Decoding Library
@@ -84,6 +83,9 @@
  */
 enum CodecID {
     CODEC_ID_NONE,
+    // This isn't defined elsewhere...?
+    // Let's do that for us.
+    CODEC_ID_CDXL,
 
     /* video codecs */
     CODEC_ID_MPEG1VIDEO,
@@ -564,7 +566,7 @@ enum AVColorTransferCharacteristic{
     AVCOL_TRC_NB           , ///< Not part of ABI
 };
 
-enum AVColorSpace{ // Define what RGB/colour range to be used for video
+enum AVColorSpace{
     AVCOL_SPC_RGB        =0,
     AVCOL_SPC_BT709      =1, ///< also ITU-R BT1361 / IEC 61966-2-4 xvYCC709 / SMPTE RP177 Annex B
     AVCOL_SPC_UNSPECIFIED=2,
