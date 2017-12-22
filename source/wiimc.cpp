@@ -1,7 +1,7 @@
 /****************************************************************************
  * WiiMC
  * Tantric 2009-2012
- *
+ * RiiMC Team 2017
  * wiimc.cpp
  ***************************************************************************/
 
@@ -223,11 +223,11 @@ static ssize_t __out_write(struct _reent *r, int fd, const char *ptr, size_t len
 }
 
 const devoptab_t gecko_out = {
-	"stdout",	// device name
-	0,			// size of file structure
+	"stdgeckoout",	// device name
+	0,		// size of file structure
 	NULL,		// device open
 	NULL,		// device close
-	__out_write,// device write
+	__out_write,	// device write
 	NULL,		// device read
 	NULL,		// device seek
 	NULL,		// device fstat
@@ -237,17 +237,17 @@ const devoptab_t gecko_out = {
 	NULL,		// device chdir
 	NULL,		// device rename
 	NULL,		// device mkdir
-	0,			// dirStateSize
+	0,		// dirStateSize
 	NULL,		// device diropen_r
 	NULL,		// device dirreset_r
 	NULL,		// device dirnext_r
 	NULL,		// device dirclose_r
 	NULL		// device statvfs_r
-};
+}; // what the fuck was that
 
 static void USBGeckoOutput()
 {
-	gecko = usb_isgeckoalive(1); // uncomment to enable USB Gecko output
+	gecko = usb_isgeckoalive(1); // comment to disable USB Gecko output
 
 	LWP_MutexInit(&gecko_mutex, false);
 
@@ -264,7 +264,7 @@ static void USBGeckoOutput()
  ***************************************************************************/
 bool SupportedIOS(u32 ios)
 {
-	if(ios == 58 || ios == 61)
+	if(ios == 58 || ios == 61) // IOS58 = USB2.0, IOS61 = SD/SDHC cards
 		return true;
 
 	return false;
@@ -431,7 +431,7 @@ extern "C" bool FindNextFile(bool load)
 	}
 
 	if(controlledbygui == 1)
-		FindFile(); // try to find this file
+		FindFile(); // Look for file if controlledbygui == 1
 
 	return true;
 }
@@ -690,12 +690,12 @@ int main(int argc, char *argv[])
 	StartNetworkThread(); //to set net heap aside MEM2 area
 	usleep(100); //force network thread execution 
 
-	u32 size = ( (1024*MAX_HEIGHT)+((MAX_WIDTH-1024)*MAX_HEIGHT) + (1024*(MAX_HEIGHT/2)*2) ) + // textures
+	u32 size = ( (1024*MAX_HEIGHT)+((MAX_WIDTH-1024)*MAX_HEIGHT) + (1024*(MAX_HEIGHT/2)*2) ) + // textures - reduce later
                 (vmode->fbWidth * vmode->efbHeight * 4) + //videoScreenshot                     
                 (32*1024); // padding	
 	AddMem2Area (size, MEM2_VIDEO); 
 	AddMem2Area (2*1024*1024, MEM2_BROWSER);
-	AddMem2Area (7.5*1024*1024, MEM2_GUI);
+	AddMem2Area (7.5*1024*1024, MEM2_GUI); // todo: reduce allocation
 	AddMem2Area (5*1024*1024, MEM2_OTHER); // vars + ttf
 
 	GX_AllocTextureMemory();
