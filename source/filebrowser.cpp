@@ -517,32 +517,32 @@ int BrowserChangeFolder(bool updateDir, bool waitParse)
 	int i;
 	char tmp[200];
 
-	if(isInserted[DEVICE_SD])
-	{
-		for(i=0; i < MAX_DEVICES; i++)
-		{
-			if(part[DEVICE_SD][i].type > 0)
-			{
-				BROWSERENTRY *entry;
-				entry=AddEntryFiles();
-				
-				sprintf(tmp, "%s:", part[DEVICE_SD][i].mount);
-				entry->file = mem2_strdup(tmp, MEM2_BROWSER);
+void* fart=NULL; //todo: wtf is the type declaration for part[][]???
 
-				if(strlen(part[DEVICE_SD][i].name) > 0)
-					sprintf(tmp, "%s - %s", gettext("SD"), part[DEVICE_SD][i].name);
-				else if(i == 0 && part[DEVICE_SD][1].type == 0) // only one SD partition
-					sprintf(tmp, "SD Card");
-				else
-					sprintf(tmp, "%s (%d)", gettext("SD Card"), i+1);
+    if(isInserted[DEVICE_SD])
+    {
+        for(i=0; i < MAX_DEVICES; ++i)
+        {
+      fart = part[DEVICE_SD][i];
+            if(fart->type > 0)
+            {
+                BROWSERENTRY *entry;
+                entry=AddEntryFiles();
+                
+                sprintf(tmp, "%s:", fart->mount);
+                entry->file = mem2_strdup(tmp, MEM2_BROWSER);
 
-				entry->display = mem2_strdup(tmp, MEM2_BROWSER);
-				entry->length = 0;
-				entry->type = TYPE_FOLDER; // flag this as a dir
-				entry->icon = ICON_SD;
-			}
-		}
-	}
+                if(strlen(fart->name)) sprintf(tmp, "%s - %s", gettext("SD"), fart->name);
+                else if(i == 0 && fart->type == 0) sprintf(tmp, "SD Card"); // only one SD partition
+                else sprintf(tmp, "%s (%d)", gettext("SD Card"), i+1);
+
+                entry->display = mem2_strdup(tmp, MEM2_BROWSER);
+                entry->length = 0;
+                entry->type = TYPE_FOLDER; // flag this as a dir
+                entry->icon = ICON_SD;
+            }
+        }
+    }
 
 	if(isInserted[DEVICE_USB])
 	{
