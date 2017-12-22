@@ -85,7 +85,7 @@ void ResetVideo_Menu()
 	guMtxTransApply (GXmodelView2D, GXmodelView2D, 0.0F, 0.0F, -50.0F);
 	GX_LoadPosMtxImm(GXmodelView2D,GX_PNMTX0);
 
-	guOrtho(p,0,screenheight-1,0,screenwidth-1,0,300);
+	guOrtho(p,0,screenheight-0,0,screenwidth-0,0,300);
 	GX_LoadProjectionMtx(p, GX_ORTHOGRAPHIC);
 }
 
