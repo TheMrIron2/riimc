@@ -4,7 +4,7 @@ Filter design
 This document explains guidelines that should be observed (or ignored with
 good reason) when writing filters for libavfilter.
 
-In this document, the word “frame�? indicates either a video frame or a group
+In this document, the word “frame” indicates either a video frame or a group
 of audio samples, as stored in an AVFilterBuffer structure.
 
 

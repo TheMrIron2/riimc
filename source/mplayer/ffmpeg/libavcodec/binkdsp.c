@@ -168,7 +168,7 @@ static void scale_block_paired(const uint8_t src[64], uint8_t *dst, int linesize
 void ff_binkdsp_init(BinkDSPContext *c)
 {
     c->idct_add    = bink_idct_add_c;
-    c->idct_put    = bink_idct_put_c;    
+    c->idct_put    = bink_idct_put_c;
     c->scale_block = scale_block_c;
     if (HAVE_PAIRED) c->scale_block = scale_block_paired;
 }
