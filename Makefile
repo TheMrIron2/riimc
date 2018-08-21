@@ -26,7 +26,7 @@ INCLUDES	:=	source source/mplayer
 # options for code generation
 #---------------------------------------------------------------------------------
 
-CFLAGS		=	-g -O3 -ffast-math -Wall $(MACHDEP) $(INCLUDE)  \
+CFLAGS		=	-g -O3 -ffast-math -fsingle-precision-constant -Wall $(MACHDEP) $(INCLUDE)  \
 				-D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -Wframe-larger-than=8192
 CXXFLAGS	=	$(CFLAGS)
 LDFLAGS		=	-g $(MACHDEP) -specs=wiimc.spec -Wl,-wrap,memcpy
